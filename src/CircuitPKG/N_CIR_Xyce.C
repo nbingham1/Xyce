@@ -160,6 +160,36 @@ static const char *trackingURL = Xyce_TRACKING_URL;
 static const char *trackingURL = 0;
 #endif
 
+// Used to communicate interface commands between MPI processes
+enum xyce_command
+{
+  runSimulation,
+  simulateUntil,
+  simulationComplete,
+  checkCircuitParameterExists,
+  getTime,
+  getFinalTime,
+  getDeviceNames,
+  getAllDeviceNames,
+  getDACDeviceNames,
+  checkDeviceParamName,
+  getDeviceParamVal,
+  getNumAdjNodesForDevice,
+  getAdjGIDsForDevice,
+  getADCMap,
+  updateTimeVoltagePairs,
+  getTimeVoltagePairs,
+  getTimeVoltagePairsSz, // TODO
+  getTimeStatePairs, // TODO
+  setADCWidths, // TODO
+  getADCWidths, // TODO
+  getCircuitValue, // TODO
+  setCircuitParameter, // TODO
+  checkResponseVar, // TODO
+  obtainResponse, // TODO
+  finalize
+};
+
 //--------  Global Declarations ------------
 void report_handler(const char *message, unsigned report_mask);
 
@@ -777,7 +807,116 @@ Simulator::run(
 //-----------------------------------------------------------------------------
 Simulator::RunStatus Simulator::runSimulation()
 {
-  return runSolvers_() ? SUCCESS : ERROR;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::runSimulation;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+  bool bsuccess = runSolvers_();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		//MPI_Reduce(&bsuccess, &bsuccess, 1, MPI_CXX_BOOL, MPI_LAND, 0, MPI_COMM_WORLD);
+		Parallel::OneReduce(comm_, MPI_LAND, &bsuccess, 1, 0); // assume rank 0 is root
+	}
+#endif
+
+	return bsuccess ? SUCCESS : ERROR;
+}
+
+//-----------------------------------------------------------------------------
+// Function      : Simulator::runWorker
+// Purpose       : Worker simulation driver to support interactive commands.
+// Special Notes : 
+// Scope         : public
+// Creator       : Ned Bingham, Broccoli, LLC
+// Creation Date : 6/20/23
+//-----------------------------------------------------------------------------
+Simulator::RunStatus Simulator::runWorker()
+{
+	if (Parallel::rank(comm_) == 0) {
+    Report::UserError0() << "runWorker() should not be called from the rank 0 root process.";
+		return ERROR;
+	}
+	
+	while (true) {
+		std::string msg;
+    Parallel::Broadcast(MPI_COMM_WORLD, msg, 0);
+		Util::Marshal reader(msg);
+
+		int command;
+		reader >> command;
+
+		if (command == xyce_command::runSimulation) {
+			runSimulation();
+		} else if (command == xyce_command::simulateUntil) {
+			double requestedUntilTime, completedUntilTime;
+			reader >> requestedUntilTime;
+			simulateUntil(requestedUntilTime, completedUntilTime);
+		} else if (command == xyce_command::simulationComplete) {
+			simulationComplete();
+		} else if (command == xyce_command::checkCircuitParameterExists) {
+			std::string paramName;
+			reader >> paramName;
+			checkCircuitParameterExists(paramName);
+		} else if (command == xyce_command::getTime) {
+			getTime();
+		} else if (command == xyce_command::getFinalTime) {
+			getFinalTime();
+		} else if (command == xyce_command::getDeviceNames) {
+			std::string modelGroup;
+			reader >> modelGroup;
+			std::vector<std::string> localNames;
+			getDeviceNames(modelGroup, localNames);
+		} else if (command == xyce_command::getAllDeviceNames) {
+			std::vector<std::string> localNames;
+			getAllDeviceNames(localNames);
+		} else if (command == xyce_command::getDACDeviceNames) {
+			std::vector<std::string> localNames;
+			getDACDeviceNames(localNames);
+		} else if (command == xyce_command::checkDeviceParamName) {
+			std::string paramName;
+			reader >> paramName;
+			checkDeviceParamName(paramName);
+		} else if (command == xyce_command::getDeviceParamVal) {
+			std::string paramName;
+			reader >> paramName;
+			double paramValue;
+			getDeviceParamVal(paramName, paramValue);
+		} else if (command == xyce_command::getNumAdjNodesForDevice) {
+			std::string deviceName;
+			reader >> deviceName;
+			int adjNodes = 0;
+			getNumAdjNodesForDevice(deviceName, adjNodes);
+		} else if (command == xyce_command::getAdjGIDsForDevice) {
+			std::string deviceName;
+			reader >> deviceName;
+			std::vector<int> gids;
+			getAdjGIDsForDevice(deviceName, gids);
+		} else if (command == xyce_command::getADCMap) {
+			std::map<std::string, std::map<std::string, double> > ADCMap;
+			getADCMap(ADCMap);
+		} else if (command == xyce_command::updateTimeVoltagePairs) {
+			std::map<std::string, std::vector<std::pair<double,double> >* > timeVoltageMap;
+			reader >> timeVoltageMap;
+			updateTimeVoltagePairs(timeVoltageMap);
+			for (auto i = timeVoltageMap.begin(); i != timeVoltageMap.end(); i++) {
+				delete i->second;
+			}
+			timeVoltageMap.clear();
+		} else if (command == xyce_command::getTimeVoltagePairs) {
+			Util::Marshal writer;
+			std::map<std::string, std::vector<std::pair<double,double> > > timeVoltageMap;
+			getTimeVoltagePairs(timeVoltageMap);
+		} else if (command == xyce_command::finalize) {
+			return finalize();
+		} else {
+			Report::UserError0() << "Unrecognized worker command '" << command << "'.";
+			return ERROR;
+		}
+	}
+	return ERROR;
 }
 
 // ---------------------------------------------------------------------------
@@ -848,7 +987,7 @@ Simulator::RunStatus Simulator::initializeEarly(
       getcwd(path, sizeof(path));
 #endif
       
-    Parallel::Broadcast(comm_, path, sizeof(path), 0);
+    Parallel::Broadcast(MPI_COMM_WORLD, path, sizeof(path), 0);
 
     if (Parallel::rank(comm_) != 0 )
 #ifdef HAVE_WIN_DIRCOMMANDS
@@ -1408,6 +1547,16 @@ void Simulator::finalizeLeadCurrentSetup_()
 //-----------------------------------------------------------------------------
 bool Simulator::getDeviceNames(const std::string &modelGroupName, std::vector<std::string> &deviceNames)
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getDeviceNames << modelGroupName;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0); // assume rank 0 is root
+	}
+#endif
+
+	bool bsuccess = true;
+
   // this call will succeed for any valid non-Y device, including U devices
   Device::EntityTypeId model_group = deviceManager_->getModelGroup(modelGroupName);
 
@@ -1420,20 +1569,44 @@ bool Simulator::getDeviceNames(const std::string &modelGroupName, std::vector<st
   if (!model_group.defined())
   {
     Report::UserWarning0() << "No devices from model group " << modelGroupName << " found in netlist";
-    return false;
+    bsuccess = false;
   }
 
-  Device::Device *device = deviceManager_->getDevice(model_group);
+  Device::Device *device = nullptr;
+	if (bsuccess) {
+		device = deviceManager_->getDevice(model_group);
+		if (!device)
+		{
+			Report::UserWarning0() << "No devices from model group " << modelGroupName << " found in netlist";
+			bsuccess = false;
+		}
+	}
 
-  if (!device)
-  {
-    Report::UserWarning0() << "No devices from model group " << modelGroupName << " found in netlist";
-    return false;
-  }
+	std::vector<std::string> local;
+	if (bsuccess) {
+		Device::getDeviceInstanceNames(*device, std::back_inserter(local));
+	}
 
-  Device::getDeviceInstanceNames(*device, std::back_inserter(deviceNames));
-  
-  return true;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		std::vector<std::string> deviceGroups;
+		Util::Marshal writer;
+		writer << local;
+		Parallel::GatherV(comm_, 0, writer.str(), deviceGroups);
+		Parallel::OneReduce(comm_, MPI_LOR, &bsuccess, 1, 0); // assume rank 0 is root
+
+		if (Parallel::rank(comm_) == 0) { // assume rank 0 is root
+			local.clear();
+			for (int i = 0; i < (int)deviceGroups.size(); i++) {
+				Util::Marshal reader(deviceGroups[i]);
+				reader >> local;
+			}
+		}
+	}
+#endif
+
+	deviceNames.insert(deviceNames.end(), local.begin(), local.end());
+  return bsuccess;
 }
 
 //----------------------------------------------------------------------------
@@ -1448,18 +1621,49 @@ bool Simulator::getDeviceNames(const std::string &modelGroupName, std::vector<st
 //----------------------------------------------------------------------------
 bool Simulator::getDACDeviceNames(std::vector< std::string >& dacNames)
 {
-  dacNames.clear();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getDACDeviceNames;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
 
+	bool bsuccess = true;
+  
+	dacNames.clear();
   Device::Device *device = deviceManager_->getDevice(Device::DAC::Traits::modelGroup());
   if (!device)
   {
     Report::UserWarning0() << "No DAC devices found in netlist";
-    return false;
+    bsuccess = false;
   }
 
-  Device::getDeviceInstanceNames(*device, std::back_inserter(dacNames));
+	std::vector<std::string> local;
+	if (bsuccess) {
+  	Device::getDeviceInstanceNames(*device, std::back_inserter(local));
+	}
 
-  return true;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		std::vector<std::string> deviceGroups;
+		Util::Marshal writer;
+		writer << local;
+		Parallel::GatherV(comm_, 0, writer.str(), deviceGroups);
+		Parallel::OneReduce(comm_, MPI_LOR, &bsuccess, 1, 0);
+
+		if (Parallel::rank(comm_) == 0) {
+			local.clear();
+			for (int i = 0; i < (int)deviceGroups.size(); i++) {
+				Util::Marshal reader(deviceGroups[i]);
+				reader >> local;
+			}
+		}
+	}
+#endif
+
+	dacNames.insert(dacNames.end(), local.begin(), local.end());
+  return bsuccess;
 }
 
 //-----------------------------------------------------------------------------
@@ -1474,22 +1678,55 @@ bool Simulator::getDACDeviceNames(std::vector< std::string >& dacNames)
 //-----------------------------------------------------------------------------
 bool Simulator::getAllDeviceNames(std::vector<std::string> &deviceNames)
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getAllDeviceNames;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
+	bool bsuccess = true;
+
   // This map will only be populated with device types that exist in the netlist
   Device::InstanceVector instance_ptr_vec = deviceManager_->getInstancePtrVec();
 
   if (instance_ptr_vec.size() == 0)
   {
     Report::UserWarning0() << "No devices found in netlist";
-    return false;
+    bsuccess = false;
   }
 
-  Device::InstanceVector::const_iterator it = instance_ptr_vec.begin();
-  Device::InstanceVector::const_iterator end = instance_ptr_vec.end();
-  for ( ; it != end; ++it)
-  {
-    deviceNames.push_back((*it)->getName().getEncodedName());
-  }
-  return true;
+	std::vector<std::string> local;
+	if (bsuccess) {
+		Device::InstanceVector::const_iterator it = instance_ptr_vec.begin();
+		Device::InstanceVector::const_iterator end = instance_ptr_vec.end();
+		for ( ; it != end; ++it)
+		{
+			local.push_back((*it)->getName().getEncodedName());
+		}
+	}
+
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		std::vector<std::string> deviceGroups;
+		Util::Marshal writer;
+		writer << local;
+		Parallel::GatherV(comm_, 0, writer.str(), deviceGroups);
+		Parallel::OneReduce(comm_, MPI_LOR, &bsuccess, 1, 0);
+
+		if (Parallel::rank(comm_) == 0) {
+			local.clear();
+			for (int i = 0; i < (int)deviceGroups.size(); i++) {
+				Util::Marshal reader(deviceGroups[i]);
+				reader >> local;
+			}
+		}
+	}
+#endif
+
+	deviceNames.insert(deviceNames.end(), local.begin(), local.end());
+  return bsuccess;
 }
 
 //-----------------------------------------------------------------------------
@@ -1504,20 +1741,36 @@ bool Simulator::getAllDeviceNames(std::vector<std::string> &deviceNames)
 //-----------------------------------------------------------------------------
 bool Simulator::checkDeviceParamName(const std::string full_param_name) const
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::checkDeviceParamName << full_param_name;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
+	bool bsuccess = true;
+
   Device::DeviceEntity *device_entity = deviceManager_->getDeviceEntity(full_param_name);
   if (!device_entity)
   {
     Report::UserWarning0() << "Device entity not found for " << full_param_name << std::endl;
-    return false;
+    bsuccess = false;
   }
 
-  if ( !device_entity->findParam(Util::paramNameFromFullParamName(full_param_name)) )
+  if (bsuccess and !device_entity->findParam(Util::paramNameFromFullParamName(full_param_name)) )
   {
     Report::UserWarning0() << "Device parameter not found for " << full_param_name << std::endl;
-    return false;
+    bsuccess = false;
   }
 
-  return true;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_LOR, &bsuccess, 1, 0);
+	}
+#endif
+
+  return bsuccess;
 }
 
 //-----------------------------------------------------------------------------
@@ -1531,20 +1784,45 @@ bool Simulator::checkDeviceParamName(const std::string full_param_name) const
 //-----------------------------------------------------------------------------
 bool Simulator::getDeviceParamVal(const std::string full_param_name, double& val) const
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getDeviceParamVal << full_param_name;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
+	bool bsuccess = true;
+	double paramValue = 0.0;
+
   Device::DeviceEntity *device_entity = deviceManager_->getDeviceEntity(full_param_name);
   if (!device_entity)
   {
     Report::UserWarning0() << "Device entity not found for " << full_param_name << std::endl;
-    return false;
+    bsuccess = false;
   }
 
-  if ( !device_entity->getParam(Util::paramNameFromFullParamName(full_param_name), val) )
+  if (bsuccess and !device_entity->getParam(Util::paramNameFromFullParamName(full_param_name), paramValue) )
   {
     Report::UserWarning0() << "Device parameter not found for " << full_param_name << std::endl;
-    return false;
+    bsuccess = false;
   }
 
-  return true;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		bool found = bsuccess;
+		Parallel::OneReduce(comm_, MPI_LOR, &bsuccess, 1, 0);
+		if (Parallel::rank(comm_) == 0 and bsuccess and not found) {
+			MPI_Status status;
+			MPI_Recv(&paramValue, 1, MPI_DOUBLE, MPI_ANY_SOURCE, xyce_command::getDeviceParamVal, comm_, &status);
+		} else if (Parallel::rank(comm_) != 0 and found) {
+			MPI_Send(&paramValue, 1, MPI_DOUBLE, 0, xyce_command::getDeviceParamVal, comm_);
+		}
+	}
+#endif
+
+	val = paramValue;
+  return bsuccess;
 }
 
 //-----------------------------------------------------------------------------
@@ -1558,6 +1836,14 @@ bool Simulator::getDeviceParamVal(const std::string full_param_name, double& val
 //-----------------------------------------------------------------------------
 bool Simulator::getNumAdjNodesForDevice(const std::string deviceName, int& numAdjNodes) const
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getNumAdjNodesForDevice << deviceName;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
   bool retVal = true;
   ExtendedString deviceNameUC(deviceName);
   deviceNameUC.toUpper();
@@ -1574,6 +1860,13 @@ bool Simulator::getNumAdjNodesForDevice(const std::string deviceName, int& numAd
     numAdjNodes = topology_->numAdjNodesWithGround(cNodePtr->get_gID());
   }
 
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_LOR, &retVal, 1, 0);
+		Parallel::OneReduce(comm_, MPI_SUM, &numAdjNodes, 1, 0);
+	}
+#endif
+
   return retVal;
 }
 
@@ -1589,11 +1882,20 @@ bool Simulator::getNumAdjNodesForDevice(const std::string deviceName, int& numAd
 //-----------------------------------------------------------------------------
 bool Simulator::getAdjGIDsForDevice(const std::string deviceName, std::vector<int> & adj_GIDs) const
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getAdjGIDsForDevice << deviceName;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
   bool retVal = true;
   ExtendedString deviceNameUC(deviceName);
   deviceNameUC.toUpper();
   const Topo::CktNode * cNodePtr = topology_->findCktNode(NodeID(deviceNameUC, Xyce::_DNODE));
 
+	std::vector<int> local;
   if (cNodePtr == 0)
   {
     Report::UserWarning0() << "Device " << deviceName << " not found" << std::endl;
@@ -1601,10 +1903,29 @@ bool Simulator::getAdjGIDsForDevice(const std::string deviceName, std::vector<in
   }
   else
   {
-    topology_->returnAdjGIDsWithGround(cNodePtr->get_gID(), adj_GIDs);
+    topology_->returnAdjGIDsWithGround(cNodePtr->get_gID(), local);
   }
 
-  return retVal;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		std::vector<std::string> deviceGroups;
+		Util::Marshal writer;
+		writer << local;
+		Parallel::GatherV(comm_, 0, writer.str(), deviceGroups);
+		Parallel::OneReduce(comm_, MPI_LOR, &retVal, 1, 0);
+
+		if (Parallel::rank(comm_) == 0) {
+			local.clear();
+			for (int i = 0; i < (int)deviceGroups.size(); i++) {
+				Util::Marshal reader(deviceGroups[i]);
+				reader >> local;
+			}
+		}
+	}
+#endif
+
+	adj_GIDs.insert(adj_GIDs.end(), local.begin(), local.end());
+	return retVal;
 }
 
 //----------------------------------------------------------------------------
@@ -1620,18 +1941,56 @@ bool Simulator::getAdjGIDsForDevice(const std::string deviceName, std::vector<in
 //----------------------------------------------------------------------------
 bool Simulator::getADCMap(std::map<std::string, std::map<std::string, double> >&ADCMap)
 {
-  ADCDeviceInstanceParameterOp op(ADCMap);
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getADCMap;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
+	bool bsuccess = true;
+
+	std::map<std::string, std::map<std::string, double> > local;
+  ADCDeviceInstanceParameterOp op(local);
 
   Device::Device *device = deviceManager_->getDevice(Device::ADC::Traits::modelGroup());
-  if (device)
+	bsuccess = (device != nullptr);
+
+  if (bsuccess)
   {
     device->forEachInstance(op);
-    return true;
   }
-  else
-  {
-    return false;
-  }
+
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		std::vector<std::string> deviceGroups;
+		Util::Marshal writer;
+		writer << local;
+		Parallel::GatherV(comm_, 0, writer.str(), deviceGroups);
+		Parallel::OneReduce(comm_, MPI_LOR, &bsuccess, 1, 0);
+
+		if (Parallel::rank(comm_) == 0) {
+			local.clear();
+			for (int i = 0; i < (int)deviceGroups.size(); i++) {
+				std::map<std::string, std::map<std::string, double> > recv;
+				Util::Marshal reader(deviceGroups[i]);
+				reader >> recv;
+				for (auto j = recv.begin(); j != recv.end(); i++) {
+					auto loc = local.find(j->first);
+					if (loc == local.end()) {
+						local.insert(*j);
+					} else {
+						loc->second.insert(j->second.begin(), j->second.end());
+					}
+				}
+			}
+		}
+	}
+#endif
+
+	ADCMap.insert(local.begin(), local.end());
+	return bsuccess;
 }
 
 //----------------------------------------------------------------------------
@@ -1649,6 +2008,14 @@ bool Simulator::getADCMap(std::map<std::string, std::map<std::string, double> >&
 //----------------------------------------------------------------------------
 bool Simulator::updateTimeVoltagePairs(const std::map< std::string, std::vector<std::pair<double,double> > *> & timeVoltageUpdateMap)
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::updateTimeVoltagePairs << timeVoltageUpdateMap;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
   // assume success, but then return false if the update fails at any DAC
   bool success = true;
 
@@ -1675,6 +2042,12 @@ bool Simulator::updateTimeVoltagePairs(const std::map< std::string, std::vector<
     }
   }
 
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_LOR, &success, 1, 0);
+	}
+#endif
+
   return success;
 }
 
@@ -1691,18 +2064,53 @@ bool Simulator::updateTimeVoltagePairs(const std::map< std::string, std::vector<
 //----------------------------------------------------------------------------
 bool Simulator::getTimeVoltagePairs(std::map< std::string, std::vector< std::pair<double,double> > > & timeVoltageUpdateMap)
 {
-  bool success = false;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getTimeVoltagePairs;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
 
+  bool success = false;
+	std::map< std::string, std::vector< std::pair<double,double> > > local;
   Device::Device *device = deviceManager_->getDevice(Device::ADC::Traits::modelGroup());
   if (device) 
   {
-    TimeVoltagePairsOp op(timeVoltageUpdateMap);
-    timeVoltageUpdateMap.clear();
+    TimeVoltagePairsOp op(local);
 
     device->forEachInstance(op);
     success = true;
   }
 
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		std::vector<std::string> deviceGroups;
+		Util::Marshal writer;
+		writer << local;
+		Parallel::GatherV(comm_, 0, writer.str(), deviceGroups);
+		Parallel::OneReduce(comm_, MPI_LOR, &success, 1, 0);
+
+		if (Parallel::rank(comm_) == 0) {
+			local.clear();
+			for (int i = 0; i < (int)deviceGroups.size(); i++) {
+				std::map< std::string, std::vector< std::pair<double,double> > > recv;
+				Util::Marshal reader(deviceGroups[i]);
+				reader >> recv;
+				for (auto j = recv.begin(); j != recv.end(); j++) {
+					auto loc = local.find(j->first);
+					if (loc == local.end()) {
+						local.insert(*j);
+					} else {
+						loc->second.insert(loc->second.end(), j->second.begin(), j->second.end());
+					}
+				}
+			}
+		}
+	}
+#endif
+
+  timeVoltageUpdateMap = local;
   return success;
 }
 
@@ -1875,6 +2283,14 @@ bool Simulator::simulateUntil(
   double        requestedUntilTime,
   double &      completedUntilTime)
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::simulateUntil << requestedUntilTime;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
   bool bsuccess = false;
   double currentTimeBeforeSim = analysisManager_->getTime();
   double finalTime = analysisManager_->getFinalTime();
@@ -1926,6 +2342,12 @@ bool Simulator::simulateUntil(
   if (DEBUG_CIRCUIT)
     dout() << std::endl;
 
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_LAND, &bsuccess, 1, 0);
+	}
+#endif
+
   return bsuccess;
 }
 
@@ -1942,6 +2364,14 @@ bool Simulator::simulateUntil(
 //---------------------------------------------------------------------------
 Simulator::RunStatus Simulator::finalize()
 {
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::finalize;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
   // If the Xyce object was created but never initialized, then there won't be a
   // need to call finalize.  
   if( analysisManager_ != NULL)
@@ -2028,6 +2458,10 @@ Simulator::RunStatus Simulator::finalize()
 	// Close the output stream:
 	closeLogFile();
   }
+
+	if (Parallel::size(comm_) > 1) {
+		MPI_Barrier(comm_);
+	}
   return SUCCESS;
 }
 
@@ -2055,7 +2489,23 @@ void Simulator::reportTotalElapsedTime()
 //---------------------------------------------------------------------------
 bool Simulator::simulationComplete()
 {
-  return analysisManager_->isSimulationComplete();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::simulationComplete;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
+  bool bcomplete = analysisManager_->isSimulationComplete();
+
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_LAND, &bcomplete, 1, 0);
+	}
+#endif
+
+	return bcomplete;
 }
 
 //---------------------------------------------------------------------------
@@ -2106,10 +2556,21 @@ bool Simulator::obtainResponse(
 //
 bool Simulator::checkCircuitParameterExists(std::string paramName)
 {
-  bool returnValue = false;
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::checkCircuitParameterExists << paramName;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+
   // check through the device manager
-  returnValue = deviceManager_->parameterExists(comm_, paramName);
-  
+  bool returnValue = deviceManager_->parameterExists(comm_, paramName);
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_LOR, &returnValue, 1, 0);
+	}
+#endif
   return returnValue;
 }
 
@@ -2229,7 +2690,20 @@ bool Simulator::getCircuitValue(std::string paramName, double& paramValue)
 //
 double Simulator::getTime()
 {
-  return analysisManager_->getTime();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getTime;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+  double btime = analysisManager_->getTime();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_MIN, &btime, 1, 0);
+	}
+#endif
+	return btime;
 }
 
 //
@@ -2237,7 +2711,20 @@ double Simulator::getTime()
 //
 double Simulator::getFinalTime()
 {
-  return analysisManager_->getFinalTime();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::rank(comm_) == 0 && Parallel::size(comm_) > 1) {
+		Util::Marshal writer;
+		writer << (int)xyce_command::getFinalTime;
+    Parallel::Broadcast(MPI_COMM_WORLD, writer, 0);
+	}
+#endif
+  double btime = analysisManager_->getFinalTime();
+#ifdef Xyce_PARALLEL_MPI
+	if (Parallel::size(comm_) > 1) {
+		Parallel::OneReduce(comm_, MPI_MAX, &btime, 1, 0);
+	}
+#endif
+	return btime;
 }
   
 

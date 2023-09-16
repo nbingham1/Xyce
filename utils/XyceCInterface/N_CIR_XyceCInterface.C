@@ -113,7 +113,24 @@ int xyce_initialize( void** ptr, int argc, char ** argv )
   }
   return xyce_initialize_late (ptr);
 }
-    
+
+//-----------------------------------------------------------------------------
+// Function      : xyce_worker
+// Purpose       : Call the Xyce::Circuit::Simulator::runWorker function via 
+//                 a pointer to an Xyce::Circuit::GenCouplingSimulator object. A typical use case is to 
+//                 create that pointer with the xyce_open() function, and to then 
+//                 initialize the Xyce::Circuit::GenCouplingSimulator object with the xyce_initialize() 
+//                 function before using this function.
+// Special Notes :
+// Scope         : public
+// Creator       : Ned Bingham, Broccoli, LLC
+// Creation Date : 9/07/2023
+//-----------------------------------------------------------------------------
+int xyce_worker(void** ptr)
+{
+	Xyce::Circuit::GenCouplingSimulator * xycePtr = static_cast<Xyce::Circuit::GenCouplingSimulator *>( *ptr );
+	return( xycePtr->runWorker() );
+}
 
 //-----------------------------------------------------------------------------
 // Function      : xyce_runSimulation

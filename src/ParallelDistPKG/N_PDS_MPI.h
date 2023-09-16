@@ -225,6 +225,14 @@ struct Datatype<unsigned char>
 };
 
 template <>
+struct Datatype<bool>
+{
+  static MPI_Datatype type() {
+    return MPI_CXX_BOOL;
+  }
+};
+
+template <>
 struct Datatype<int>
 {
   static MPI_Datatype type() {
@@ -416,6 +424,35 @@ inline bool mpi_parallel_run(MPI_Comm comm) {
 }
 
 } // namespace <unnamed>
+
+/**
+ * @brief Function <code>Reduce</code> copies the source/destination array into a
+ * temporary vector and then executed the MPI operation using the temporary as the source.
+ *
+ * @param mpi_comm	a <code>MPI_Comm</code> value of the MPI communicator.
+ *
+ * @param op		a <code>MPI_Op</code> value of the MPI operation.
+ *
+ * @param src_dest	a <code>T</code> pointer to an array to be copied for the source
+ *			and used as the destination.
+ *
+ * @param size		a <code>size_t</code> value of the length of the array pointed to
+ *			by <b>src_dest</b>
+ *
+ * @param root    a <code>int</code> value of the root rank to send the result.
+ */
+template<class T>
+inline void
+OneReduce(MPI_Comm mpi_comm, MPI_Op op, T *src_dest, size_t size, int root)
+{
+  if (mpi_parallel_run(mpi_comm)) {
+    //std::vector<T> source(src_dest, src_dest + size);
+
+    if (MPI_Reduce(&src_dest[0], &src_dest[0], (int) size, Datatype<T>::type(), op, root, mpi_comm) != MPI_SUCCESS )
+      throw std::runtime_error("MPI_Reduce failed");
+  }
+}
+
 
 /**
  * @brief Function <code>AllReduce</code> copies the source/destination array into a

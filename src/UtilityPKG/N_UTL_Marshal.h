@@ -202,6 +202,7 @@ public:
 template <typename T>
 Marshal &operator<<(Marshal &mout, const T &t);
 
+
 /**
  * @brief Function <code>operator>> </code> reads the object from the packed byte stream.  This is
  * the template class and has no implementation.  You must specialize this class to read an object.
@@ -342,7 +343,7 @@ Marshal &operator>>(Marshal &min, std::vector<T, A> &v)
 
   size_t size = 0;
   min >> size;
-  v.reserve(size);
+  v.reserve(v.size() + size);
   for (size_t i = 0; i < size; ++i)
   {
     T t;
@@ -480,6 +481,29 @@ Marshal &operator>>(Marshal &min, unordered_set<T, C, A> &s)
   }
 
   return min;
+}
+
+template <typename T>
+Marshal &operator<<(Marshal &mout, T* const &t)
+{
+	if (t == nullptr) {
+		return (mout << false);
+	}
+	return (mout << true << *t);
+}
+
+template <typename T>
+Marshal &operator>>(Marshal &min, T *&t)
+{
+	bool valid = false;
+	min >> valid;
+	if (!valid) {
+		t = nullptr;
+		return min;
+	}
+
+	t = new T;
+	return (min >> *t);
 }
 
 template <class T>
