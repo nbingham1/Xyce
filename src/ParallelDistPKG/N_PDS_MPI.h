@@ -446,9 +446,10 @@ inline void
 OneReduce(MPI_Comm mpi_comm, MPI_Op op, T *src_dest, size_t size, int root)
 {
   if (mpi_parallel_run(mpi_comm)) {
-    //std::vector<T> source(src_dest, src_dest + size);
+    T source[size];
+    memcpy(source, src_dest, size*sizeof(T));
 
-    if (MPI_Reduce(&src_dest[0], &src_dest[0], (int) size, Datatype<T>::type(), op, root, mpi_comm) != MPI_SUCCESS )
+    if (MPI_Reduce(source, &src_dest[0], (int) size, Datatype<T>::type(), op, root, mpi_comm) != MPI_SUCCESS )
       throw std::runtime_error("MPI_Reduce failed");
   }
 }

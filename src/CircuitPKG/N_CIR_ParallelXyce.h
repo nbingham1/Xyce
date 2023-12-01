@@ -22,95 +22,70 @@
 
 //-------------------------------------------------------------------------
 //
-// Purpose        :
+// Purpose        : Provide a class for more general Xyce/Alegra coupling
 //
-// Special Notes  :
+// Special Notes  : This class is meant to provide a more general Xyce/Alegra
+//                  coupling API than that provided by the old N_CIR_Xygra class,
+//                  which is fairly general but clearly set up and named
+//                  for its primary use case, simulating coils in Alegra
+//                  and coupling them loosely to Xyce.
 //
-// Creator        : Eric Keiter, SNL, Parallel Computational Sciences
+// Creator        : Tom Russo, SNL, Electrical Models & Simulation
 //
-// Creation Date  : 05/27/00
-//
-//
-//
+// Creation Date  : 2/22/2017
 //
 //-------------------------------------------------------------------------
 
-#ifndef Xyce_N_CIR_CIRCUIT_h
-#define Xyce_N_CIR_CIRCUIT_h
+#ifndef Xyce_N_CIR_ParallelXyce_H
+#define Xyce_N_CIR_ParallelXyce_H
 
-#include <string>
 #include <map>
-#include <vector>
+#include <string>
 
-#include <N_ANP_fwd.h>
-#include <N_DEV_fwd.h>
-#include <N_ERH_fwd.h>
-#include <N_IO_fwd.h>
-#include <N_LAS_fwd.h>
-#include <N_LOA_fwd.h>
+#include <N_CIR_Xyce.h>
 #include <N_PDS_fwd.h>
-#include <N_TOP_fwd.h>
-#include <N_UTL_fwd.h>
-#include <N_NLS_fwd.h>
-#include <N_TIA_fwd.h>
-
-#include <N_UTL_ReportHandler.h>
-#include <N_UTL_Stats.h>
-#include <N_UTL_JSON.h>
-#include <N_DEV_ADC.h>
-#include <N_DEV_DAC.h>
-
-#include <N_IO_CmdParse.h>
+#include <N_DEV_fwd.h>
+#include <N_IO_fwd.h>
+#include <N_DEV_VectorComputeInterface.h>
+#include <N_IO_ExtOutInterface.h>
 
 namespace Xyce {
-
 namespace Circuit {
 
-//-----------------------------------------------------------------------------
-// Class         : Xyce
-// Purpose       : This is the main "top level" class for Xyce.
-// Special Notes :
-// Creator       : Eric Keiter, SNL, Parallel Computational Sciences
-// Creation Date : 5/27/00
-//-----------------------------------------------------------------------------
-class Simulator
+template <class ...Types>
+class CallArgs
 {
- public:
-  enum RunState {START, PARALLEL_INIT, PARSE_COMMAND_LINE, CHECK_NETLIST, OPEN_LOGSTREAM, ALLOCATE_SUBSYSTEMS, PARSE_NETLIST, SETUP_TOPOLOGY,
-                 INSTANTIATE_DEVICES, SETUP_MATRIX_STRUCTURE, INITIALIZE_SYSTEM};
-  enum RunStatus {ERROR, SUCCESS, DONE};
+	
+};
 
-  Simulator(Parallel::Machine comm = MPI_COMM_NULL);
+//-----------------------------------------------------------------------------
+// Class         : ParallelSimulator
+// Purpose       :
+// Special Notes :
+//
+// Creator       : Tom Russo, SNL, Electrical and Microsystems Modeling
+// Creation Date : 8/21/08
+//-----------------------------------------------------------------------------
+///
+/// High-level Xyce interface class for use in coupling to external codes
+///
+/// This class is derived from the "Simulator" class of Xyce.  It provides
+/// some extra functions that allow the external simulator to pass data
+/// down to special interface devices
+///
+/// This is very similar to N_CIR_Xygra, but intended to be more general
+class ParallelSimulator : public Simulator
+{
+public:
+	using Simulator::RunStatus;
 
-  virtual ~Simulator();
+  /// Constructor
+  ParallelSimulator(Xyce::Parallel::Machine comm=MPI_COMM_NULL) : Simulator(comm)
+  {}
 
-  virtual Analysis::AnalysisManager *newAnalysisManager(
-    const IO::CmdParse &                command_line,
-    IO::RestartMgr &                    restart_manager,
-    Analysis::OutputMgrAdapter &        output_manager_adapter,
-    Stats::Stat                         analysis_stat);
-
-  Device::DeviceMgr &getDeviceManager() {
-    return *deviceManager_;
-  }
-
-  IO::OutputMgr &getOutputManager() {
-    return *outputManager_;
-  }
-
-  Analysis::AnalysisManager &getAnalysisManager() {
-    return *analysisManager_;
-  }
-
-  Nonlinear::Manager &getNonlinearManager() {
-    return *nonlinearManager_;
-  }
-
-  Linear::System &getLinearSystem() {
-    return *linearSystem_;
-  }
-
-  Loader::CktLoader &getCircuitLoader();
+  /// Destructor
+  virtual ~ParallelSimulator()
+  {}
 
   // These are all the API calls that we are suppose to be making available
   // for external programs and/or other objects
@@ -172,14 +147,8 @@ class Simulator
   //---------------------------------------------------------------------------
   RunStatus initialize(int argc, char **argv);
 
-  /// First initialization call, intializes up to point where
-  /// topology needs to query devices for number variables and jacstamp.
-  /// This include reading netlist and instantiating devices.
-  RunStatus initializeEarly(int argc, char **argv);
-
-  /// Second initialization call, intialization steps starting from
-  /// where topology needs to query devices for number variables and jacstamp
-  RunStatus initializeLate();
+	using Simulator::initializeEarly;
+	using Simulator::initializeLate;
 
   //---------------------------------------------------------------------------
   // Function      : runSimulation
@@ -190,6 +159,7 @@ class Simulator
   // Creation Date : 5/27/00
   //---------------------------------------------------------------------------
   RunStatus runSimulation();
+	RunStatus runWorker();
 
   bool getDeviceNames(const std::string & modelGroupName, std::vector<std::string> & deviceNames);
   bool getAllDeviceNames(std::vector<std::string> & deviceNames);
@@ -325,7 +295,7 @@ class Simulator
   //---------------------------------------------------------------------------
   RunStatus finalize();
 
-  void reportTotalElapsedTime ();
+  using Simulator::reportTotalElapsedTime;
 
   //
   // checkes if a given name, variable_name, exists in as the name of a measure
@@ -366,99 +336,44 @@ class Simulator
   //
   double getFinalTime();
 
-  // // report on whether simulation is finished or not
+  // report on whether simulation is finished or not
   bool simulationComplete();
 
- protected:
+protected:
+	enum WorkerCommand
+	{
+		INITIALIZE,
 
-  IO::PkgOptionsMgr * getOptionsManager()
-  {
-    return optionsManager_;
-  };
+		RUN_SIMULATION,
+		SIMULATE_UNTIL,
+		SIMULATION_COMPLETE,
+		CHECK_CIRCUIT_PARAMETER_EXISTS,
+		GET_TIME,
+		GET_FINAL_TIME,
+		GET_DEVICE_NAMES,
+		GET_ALL_DEVICE_NAMES,
+		GET_DAC_DEVICE_NAMES,
+		CHECK_DEVICE_PARAM_NAME,
+		GET_DEVICE_PARAM_VAL,
+		GET_NUM_ADJ_NODES_FOR_DEVICE,
+		GET_ADJ_GIDS_FOR_DEVICE,
+		GET_ADC_MAP,
+		UPDATE_TIME_VOLTAGE_PAIRS,
+		GET_TIME_VOLTAGE_PAIRS,
+		GET_TIME_VOLTAGE_PAIRS_SZ, // TODO
+		GET_TIME_STATE_PAIRS, // TODO
+		SET_ADC_WIDTHS, // TODO
+		GET_ADC_WIDTHS, // TODO
+		GET_CIRCUIT_VALUE, // TODO
+		SET_CIRCUIT_PARAMETER, // TODO
+		CHECK_RESPONSE_VAR, // TODO
+		OBTAIN_RESPONSE, // TODO
+		FINALIZE
+	};
 
-    virtual bool doRegistrations_();
-
-    Parallel::Machine comm() const;
-    int rank() const;
-    int size() const;
-
- private:
-    bool doAllocations_();
-    bool doInitializations_();
-    RunStatus setupTopology( unordered_map< std::string, std::string >& aliasMap );
-    bool setUpMatrixStructure_();
-    bool runSolvers_();
-
-    Device::ADC::Instance *getADCInstance_(const std::string &deviceName);
-    Device::DAC::Instance *getDACInstance_(const std::string &deviceName);
-    void processParamOrDoc_(std::string & optionName, std::string & deviceName,
-                            int modelLevel, bool printModel, bool printInstance);
-    void finalizeLeadCurrentSetup_();
-
- private:
-  RunState                              runState_;
-  Parallel::Machine                     comm_;
-  IO::ParsingMgr *                      parsingManager_;                ///< Parsing Manager
-  Device::DeviceMgr *                   deviceManager_;                 ///< Device Manager
-
-  Analysis::AnalysisCreatorRegistry *   analysisRegistry_;
-  Analysis::ProcessorCreatorRegistry *  processorRegistry_;
-  Topo::Topology *                      topology_;
-  Linear::System *                      linearSystem_;                  ///< Linear algebra system
-  Linear::Builder *                     builder_;                       ///< Linear algebra system component builder
-  Analysis::AnalysisManager *           analysisManager_;               ///< Analysis manager
-  Loader::CktLoader *                   circuitLoader_;                 ///< Circuit loader
-  Analysis::OutputMgrAdapter *          outputManagerAdapter_;          ///< Output manager adapter
-  Nonlinear::Manager *                  nonlinearManager_;              ///< Nonlinear solver manager
-  Parallel::Manager *                   parallelManager_;               ///< Parallel distribution manager
-  Util::Op::BuilderManager *            opBuilderManager_;              ///< Op builder manager
-  IO::OutputMgr *                       outputManager_;                 ///< Output manager
-  IO::Measure::Manager *                measureManager_;                ///< Measure manager
-  IO::FourierMgr *                      fourierManager_;                ///< Fourier manager
-  IO::FFTMgr *                          fftManager_;                    ///< FFT manager
-  IO::InitialConditionsManager *        initialConditionsManager_;      ///< Initial conditions manager
-  IO::OutputResponse *                  outputResponse_;                ///< Response output
-  IO::RestartMgr *                      restartManager_;                ///< Restart manager
-  IO::LoadManager *                     loadManager_;                   ///< .LOAD processing manager
-  IO::PkgOptionsMgr *                   optionsManager_;                ///< Package options manager
-  Stats::Stat                           rootStat_;                      ///< Stats collection root
-  Stats::Stat                           analysisStat_;                  ///< Analysis stats
-  Util::JSON                            auditJSON_;                     ///< Audit JSON structure
-  Util::Timer *                         XyceTimerPtr_;                  ///< Xyce solver timing utility
-  Util::Timer *                         ElapsedTimerPtr_;               ///< Elapsed time from beginning of run
-  unordered_set<std::string> device_names_;
-  Util::Op::OpList *                    opListPtr_;                        ///List of operators created in getCircuitValue() if needed
-#if defined(Xyce_USE_FFTW) && !defined(Xyce_USE_INTEL_FFT)
-  int                                   fftwWisdomLength_;               ///< length of FFTW library wisdom string. Used in cleanup.
-#endif 
-
-  protected:
-  IO::CmdParse                          commandLine_;
-
-  private:
-  IO::HangingResistor                   hangingResistor_;
-
-  // if the user is providing an external file with parameters in it
-  std::vector< std::pair< std::string, std::string> > externalNetlistParams_;
-  std::map<std::string, Device::DAC::Instance *>        dacDeviceMap_;
-  std::map<std::string, Device::ADC::Instance *>        adcDeviceMap_;
-
-  REH previousReportHandler_;
 };
-
-//-----------------------------------------------------------------------------
-// Function      : Xyce_exit
-// Purpose       :
-// Special Notes :
-// Creator       : Rob Hoekstra, SNL, Parallel Computational Sciences
-// Creation Date : 7/26/04
-//-----------------------------------------------------------------------------
- void Xyce_exit( int code , bool asymmetric);
-
 
 } // namespace Circuit
 } // namespace Xyce
 
-typedef Xyce::Circuit::Simulator N_CIR_Xyce;
-
-#endif // Xyce_N_CIR_CIRCUIT_h
+#endif // Xyce_N_CIR_ParallelXyce_H

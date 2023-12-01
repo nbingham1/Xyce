@@ -42,7 +42,7 @@
 #include <map>
 #include <string>
 
-#include <N_CIR_Xyce.h>
+#include <N_CIR_ParallelXyce.h>
 #include <N_PDS_fwd.h>
 #include <N_DEV_fwd.h>
 #include <N_IO_fwd.h>
@@ -68,12 +68,12 @@ namespace Circuit {
 /// down to special interface devices
 ///
 /// This is very similar to N_CIR_Xygra, but intended to be more general
-class GenCouplingSimulator : public Xyce::Circuit::Simulator
+class GenCouplingSimulator : public Xyce::Circuit::ParallelSimulator
 {
 public:
   /// Constructor
   GenCouplingSimulator(Xyce::Parallel::Machine comm=MPI_COMM_NULL)
-    : Simulator(comm)
+    : ParallelSimulator(comm)
   {}
 
   /// Destructor

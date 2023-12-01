@@ -5,6 +5,7 @@
 target_sources(XyceLib PRIVATE
       # DO NOT list Xyce.C here.  It is part of the Xyce binary target.
       N_CIR_Xyce.C
+      N_CIR_ParallelXyce.C
       N_CIR_SecondLevelSimulator.C
       N_CIR_MixedSignalSimulator.C
       N_CIR_GenCouplingSimulator.C)

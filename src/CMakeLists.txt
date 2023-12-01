@@ -214,6 +214,7 @@ install(FILES
     AnalysisPKG/N_ANP_fwd.h
     AnalysisPKG/N_ANP_NoiseData.h
     CircuitPKG/N_CIR_Xyce.h
+    CircuitPKG/N_CIR_ParallelXyce.h
     CircuitPKG/N_CIR_GenCouplingSimulator.h
     DeviceModelPKG/Core/N_DEV_Configuration.h
     DeviceModelPKG/Core/N_DEV_Const.h
