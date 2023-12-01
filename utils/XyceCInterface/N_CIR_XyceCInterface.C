@@ -75,6 +75,10 @@ void xyce_open( void ** ptr)
 //-----------------------------------------------------------------------------
 void xyce_close( void** ptr)
 {
+  if (*ptr == NULL) {
+    return;
+  }
+
   Xyce::Circuit::GenCouplingSimulator * xycePtr = static_cast<Xyce::Circuit::GenCouplingSimulator *>( *ptr );
   xycePtr->finalize();
   delete xycePtr;

@@ -71,26 +71,26 @@ namespace Circuit {
 ParallelSimulator::RunStatus ParallelSimulator::runSimulation()
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::RUN_SIMULATION;
-		
-		printf("runSimulation send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::RUN_SIMULATION;
+    
+    printf("runSimulation send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("runSimulation send done\n");
-	}
+    printf("runSimulation send done\n");
+  }
 #endif
   bool bsuccess = Simulator::runSimulation();
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("runSimulation recv\n");
-		//MPI_Reduce(&bsuccess, &bsuccess, 1, MPI_CXX_BOOL, MPI_LAND, 0, comm());
-		Parallel::OneReduce(comm(), MPI_LAND, &bsuccess, 1, 0); // assume rank 0 is root
-		printf("runSimulation recv done\n");
-	}
+  if (size() > 1) {
+    printf("runSimulation recv\n");
+    //MPI_Reduce(&bsuccess, &bsuccess, 1, MPI_CXX_BOOL, MPI_LAND, 0, comm());
+    Parallel::OneReduce(comm(), MPI_LAND, &bsuccess, 1, 0); // assume rank 0 is root
+    printf("runSimulation recv done\n");
+  }
 #endif
 
-	return bsuccess ? SUCCESS : ERROR;
+  return bsuccess ? SUCCESS : ERROR;
 }
 
 //-----------------------------------------------------------------------------
@@ -103,153 +103,153 @@ ParallelSimulator::RunStatus ParallelSimulator::runSimulation()
 //-----------------------------------------------------------------------------
 ParallelSimulator::RunStatus ParallelSimulator::runWorker()
 {
-	if (rank() == 0) {
+  if (rank() == 0) {
     Report::UserError0() << "runWorker() should not be called from the rank 0 root process.";
-		return ERROR;
-	}
+    return ERROR;
+  }
 
-	printf("runWorker %d\n", rank());
-	
-	while (true) {
-		printf("waiting for command\n");
-		std::string msg;
+  printf("runWorker %d\n", rank());
+  
+  while (true) {
+    printf("waiting for command\n");
+    std::string msg;
     Parallel::Broadcast(comm(), msg, 0);
-		Util::Marshal reader(msg);
+    Util::Marshal reader(msg);
 
-		int command;
-		reader >> command;
+    int command;
+    reader >> command;
 
-		if (command == WorkerCommand::RUN_SIMULATION) {
-			printf("runSimulation\n");
-			runSimulation();
-		} else if (command == WorkerCommand::SIMULATE_UNTIL) {
-			double requestedUntilTime, completedUntilTime;
-			reader >> requestedUntilTime;
-			printf("simulateUntil %f\n", requestedUntilTime);
-			simulateUntil(requestedUntilTime, completedUntilTime);
-		} else if (command == WorkerCommand::SIMULATION_COMPLETE) {
-			printf("simulationComplete\n");
-			simulationComplete();
-		} else if (command == WorkerCommand::CHECK_CIRCUIT_PARAMETER_EXISTS) {
-			std::string paramName;
-			reader >> paramName;
-			printf("simulationComplete %s\n", paramName.c_str());
-			checkCircuitParameterExists(paramName);
-		} else if (command == WorkerCommand::GET_TIME) {
-			printf("getTime\n");
-			getTime();
-		} else if (command == WorkerCommand::GET_FINAL_TIME) {
-			printf("getFinalTime\n");
-			getFinalTime();
-		} else if (command == WorkerCommand::GET_DEVICE_NAMES) {
-			std::string modelGroup;
-			reader >> modelGroup;
-			printf("getDeviceNames %s\n", modelGroup.c_str());
-			std::vector<std::string> localNames;
-			getDeviceNames(modelGroup, localNames);
-		} else if (command == WorkerCommand::GET_ALL_DEVICE_NAMES) {
-			printf("getAllDeviceNames\n");
-			std::vector<std::string> localNames;
-			getAllDeviceNames(localNames);
-		} else if (command == WorkerCommand::GET_DAC_DEVICE_NAMES) {
-			printf("getDACDeviceNames\n");
-			std::vector<std::string> localNames;
-			getDACDeviceNames(localNames);
-		} else if (command == WorkerCommand::CHECK_DEVICE_PARAM_NAME) {
-			std::string paramName;
-			reader >> paramName;
-			printf("checkDeviceParamName %s\n", paramName.c_str());
-			checkDeviceParamName(paramName);
-		} else if (command == WorkerCommand::GET_DEVICE_PARAM_VAL) {
-			std::string paramName;
-			reader >> paramName;
-			printf("getDeviceParamVal %s\n", paramName.c_str());
-			double paramValue;
-			getDeviceParamVal(paramName, paramValue);
-		} else if (command == WorkerCommand::GET_NUM_ADJ_NODES_FOR_DEVICE) {
-			std::string deviceName;
-			reader >> deviceName;
-			printf("getNumAdjNodesForDevice %s\n", deviceName.c_str());
-			int adjNodes = 0;
-			getNumAdjNodesForDevice(deviceName, adjNodes);
-		} else if (command == WorkerCommand::GET_ADJ_GIDS_FOR_DEVICE) {
-			std::string deviceName;
-			reader >> deviceName;
-			printf("getAdjGIDsForDevice %s\n", deviceName.c_str());
-			std::vector<int> gids;
-			getAdjGIDsForDevice(deviceName, gids);
-		} else if (command == WorkerCommand::GET_ADC_MAP) {
-			printf("getADCMap\n");
-			std::map<std::string, std::map<std::string, double> > ADCMap;
-			getADCMap(ADCMap);
-		} else if (command == WorkerCommand::UPDATE_TIME_VOLTAGE_PAIRS) {
-			std::map<std::string, std::vector<std::pair<double,double> >* > timeVoltageMap;
-			reader >> timeVoltageMap;
-			printf("updateTimeVoltagePairs\n");
-			updateTimeVoltagePairs(timeVoltageMap);
-			for (auto i = timeVoltageMap.begin(); i != timeVoltageMap.end(); i++) {
-				delete i->second;
-			}
-			timeVoltageMap.clear();
-		} else if (command == WorkerCommand::GET_TIME_VOLTAGE_PAIRS) {
-			printf("getTimeVoltagePairs\n");
-			Util::Marshal writer;
-			std::map<std::string, std::vector<std::pair<double,double> > > timeVoltageMap;
-			getTimeVoltagePairs(timeVoltageMap);
-		} else if (command == WorkerCommand::GET_TIME_VOLTAGE_PAIRS_SZ) {
-			printf("getTimeVoltagePairsSz\n");
-			Util::Marshal writer;
-			int maximumSize;
-			getTimeVoltagePairsSz(maximumSize);
-		} else if (command == WorkerCommand::GET_TIME_STATE_PAIRS) {
-			printf("getTimeStatePairs\n");
-			Util::Marshal writer;
-			std::map<std::string, std::vector<std::pair<double,int> > > timeStateMap;
-			getTimeStatePairs(timeStateMap);
-		} else if (command == WorkerCommand::SET_ADC_WIDTHS) {
-			std::map<std::string, int> ADCWidthMap;
-			reader >> ADCWidthMap;
-			printf("setADCWidths\n");
-			setADCWidths(ADCWidthMap);
-			ADCWidthMap.clear();
-		} else if (command == WorkerCommand::GET_ADC_WIDTHS) {
-			std::map<std::string, int> ADCWidthMap;
-			reader >> ADCWidthMap;
-			printf("getADCWidths\n");
-			getADCWidths(ADCWidthMap);
-			ADCWidthMap.clear();
-		} else if (command == WorkerCommand::GET_CIRCUIT_VALUE) {
-			std::string paramName;
-			double paramValue;
-			reader >> paramName;
-			printf("getCircuitValue\n");
-			getCircuitValue(paramName, paramValue);
-		} else if (command == WorkerCommand::SET_CIRCUIT_PARAMETER) {
-			std::string paramName;
-			double paramValue;
-			reader >> paramName >> paramValue;
-			printf("setCircuitParameter\n");
-			setCircuitParameter(paramName, paramValue);
-		} else if (command == WorkerCommand::CHECK_RESPONSE_VAR) {
-			std::string paramName;
-			reader >> paramName;
-			printf("checkResponseVar\n");
-			checkResponseVar(paramName);
-		} else if (command == WorkerCommand::OBTAIN_RESPONSE) {
-			std::string paramName;
-			double paramValue;
-			reader >> paramName;
-			printf("obtainResponse\n");
-			obtainResponse(paramName, paramValue);
-		} else if (command == WorkerCommand::FINALIZE) {
-			printf("finalize\n");
-			return finalize();
-		} else {
-			Report::UserError0() << "Unrecognized worker command '" << command << "'.";
-			return ERROR;
-		}
-	}
-	return ERROR;
+    if (command == WorkerCommand::RUN_SIMULATION) {
+      printf("runSimulation\n");
+      runSimulation();
+    } else if (command == WorkerCommand::SIMULATE_UNTIL) {
+      double requestedUntilTime, completedUntilTime;
+      reader >> requestedUntilTime;
+      printf("simulateUntil %e\n", requestedUntilTime);
+      simulateUntil(requestedUntilTime, completedUntilTime);
+    } else if (command == WorkerCommand::SIMULATION_COMPLETE) {
+      printf("simulationComplete\n");
+      simulationComplete();
+    } else if (command == WorkerCommand::CHECK_CIRCUIT_PARAMETER_EXISTS) {
+      std::string paramName;
+      reader >> paramName;
+      printf("simulationComplete %s\n", paramName.c_str());
+      checkCircuitParameterExists(paramName);
+    } else if (command == WorkerCommand::GET_TIME) {
+      printf("getTime\n");
+      getTime();
+    } else if (command == WorkerCommand::GET_FINAL_TIME) {
+      printf("getFinalTime\n");
+      getFinalTime();
+    } else if (command == WorkerCommand::GET_DEVICE_NAMES) {
+      std::string modelGroup;
+      reader >> modelGroup;
+      printf("getDeviceNames %s\n", modelGroup.c_str());
+      std::vector<std::string> localNames;
+      getDeviceNames(modelGroup, localNames);
+    } else if (command == WorkerCommand::GET_ALL_DEVICE_NAMES) {
+      printf("getAllDeviceNames\n");
+      std::vector<std::string> localNames;
+      getAllDeviceNames(localNames);
+    } else if (command == WorkerCommand::GET_DAC_DEVICE_NAMES) {
+      printf("getDACDeviceNames\n");
+      std::vector<std::string> localNames;
+      getDACDeviceNames(localNames);
+    } else if (command == WorkerCommand::CHECK_DEVICE_PARAM_NAME) {
+      std::string paramName;
+      reader >> paramName;
+      printf("checkDeviceParamName %s\n", paramName.c_str());
+      checkDeviceParamName(paramName);
+    } else if (command == WorkerCommand::GET_DEVICE_PARAM_VAL) {
+      std::string paramName;
+      reader >> paramName;
+      printf("getDeviceParamVal %s\n", paramName.c_str());
+      double paramValue;
+      getDeviceParamVal(paramName, paramValue);
+    } else if (command == WorkerCommand::GET_NUM_ADJ_NODES_FOR_DEVICE) {
+      std::string deviceName;
+      reader >> deviceName;
+      printf("getNumAdjNodesForDevice %s\n", deviceName.c_str());
+      int adjNodes = 0;
+      getNumAdjNodesForDevice(deviceName, adjNodes);
+    } else if (command == WorkerCommand::GET_ADJ_GIDS_FOR_DEVICE) {
+      std::string deviceName;
+      reader >> deviceName;
+      printf("getAdjGIDsForDevice %s\n", deviceName.c_str());
+      std::vector<int> gids;
+      getAdjGIDsForDevice(deviceName, gids);
+    } else if (command == WorkerCommand::GET_ADC_MAP) {
+      printf("getADCMap\n");
+      std::map<std::string, std::map<std::string, double> > ADCMap;
+      getADCMap(ADCMap);
+    } else if (command == WorkerCommand::UPDATE_TIME_VOLTAGE_PAIRS) {
+      std::map<std::string, std::vector<std::pair<double,double> >* > timeVoltageMap;
+      reader >> timeVoltageMap;
+      printf("updateTimeVoltagePairs\n");
+      updateTimeVoltagePairs(timeVoltageMap);
+      for (auto i = timeVoltageMap.begin(); i != timeVoltageMap.end(); i++) {
+        delete i->second;
+      }
+      timeVoltageMap.clear();
+    } else if (command == WorkerCommand::GET_TIME_VOLTAGE_PAIRS) {
+      printf("getTimeVoltagePairs\n");
+      Util::Marshal writer;
+      std::map<std::string, std::vector<std::pair<double,double> > > timeVoltageMap;
+      getTimeVoltagePairs(timeVoltageMap);
+    } else if (command == WorkerCommand::GET_TIME_VOLTAGE_PAIRS_SZ) {
+      printf("getTimeVoltagePairsSz\n");
+      Util::Marshal writer;
+      int maximumSize;
+      getTimeVoltagePairsSz(maximumSize);
+    } else if (command == WorkerCommand::GET_TIME_STATE_PAIRS) {
+      printf("getTimeStatePairs\n");
+      Util::Marshal writer;
+      std::map<std::string, std::vector<std::pair<double,int> > > timeStateMap;
+      getTimeStatePairs(timeStateMap);
+    } else if (command == WorkerCommand::SET_ADC_WIDTHS) {
+      std::map<std::string, int> ADCWidthMap;
+      reader >> ADCWidthMap;
+      printf("setADCWidths\n");
+      setADCWidths(ADCWidthMap);
+      ADCWidthMap.clear();
+    } else if (command == WorkerCommand::GET_ADC_WIDTHS) {
+      std::map<std::string, int> ADCWidthMap;
+      reader >> ADCWidthMap;
+      printf("getADCWidths\n");
+      getADCWidths(ADCWidthMap);
+      ADCWidthMap.clear();
+    } else if (command == WorkerCommand::GET_CIRCUIT_VALUE) {
+      std::string paramName;
+      double paramValue;
+      reader >> paramName;
+      printf("getCircuitValue\n");
+      getCircuitValue(paramName, paramValue);
+    } else if (command == WorkerCommand::SET_CIRCUIT_PARAMETER) {
+      std::string paramName;
+      double paramValue;
+      reader >> paramName >> paramValue;
+      printf("setCircuitParameter\n");
+      setCircuitParameter(paramName, paramValue);
+    } else if (command == WorkerCommand::CHECK_RESPONSE_VAR) {
+      std::string paramName;
+      reader >> paramName;
+      printf("checkResponseVar\n");
+      checkResponseVar(paramName);
+    } else if (command == WorkerCommand::OBTAIN_RESPONSE) {
+      std::string paramName;
+      double paramValue;
+      reader >> paramName;
+      printf("obtainResponse\n");
+      obtainResponse(paramName, paramValue);
+    } else if (command == WorkerCommand::FINALIZE) {
+      printf("exiting\n");
+      return SUCCESS;
+    } else {
+      Report::UserError0() << "Unrecognized worker command '" << command << "'.";
+      return ERROR;
+    }
+  }
+  return ERROR;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,34 +271,34 @@ ParallelSimulator::RunStatus ParallelSimulator::initialize(
   ParallelSimulator::RunStatus run_status = SUCCESS;
 
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 and size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::INITIALIZE;
-		writer << argc;
-		for (int i = 0; i < argc; i++) {
-			writer << std::string(argv[i]);
-		}
-		printf("initialize send\n");
+  if (rank() == 0 and size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::INITIALIZE;
+    writer << argc;
+    for (int i = 0; i < argc; i++) {
+      writer << std::string(argv[i]);
+    }
+    printf("initialize send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("initialize send done\n");
-	}
+    printf("initialize send done\n");
+  }
 #endif
 
   run_status = initializeEarly(argc, argv);
   if (run_status == SUCCESS) {
-  	run_status = initializeLate();
+    run_status = initializeLate();
   }
 
-	bool success = (run_status == SUCCESS);
+  bool success = (run_status == SUCCESS);
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("simulationComplete recv\n");
-		Parallel::OneReduce(comm(), MPI_LAND, &success, 1, 0);
-		printf("simulationComplete recv done\n");
-	}
+  if (size() > 1) {
+    printf("simulationComplete recv\n");
+    Parallel::OneReduce(comm(), MPI_LAND, &success, 1, 0);
+    printf("simulationComplete recv done\n");
+  }
 #endif
 
-	return success ? SUCCESS : ERROR;
+  return success ? SUCCESS : ERROR;
 }
 
 //-----------------------------------------------------------------------------
@@ -321,41 +321,41 @@ ParallelSimulator::RunStatus ParallelSimulator::initialize(
 bool ParallelSimulator::getDeviceNames(const std::string &modelGroupName, std::vector<std::string> &deviceNames)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_DEVICE_NAMES << modelGroupName;
-		printf("getDeviceNames send %s\n", modelGroupName.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_DEVICE_NAMES << modelGroupName;
+    printf("getDeviceNames send %s\n", modelGroupName.c_str());
     Parallel::Broadcast(comm(), writer, 0); // assume rank 0 is root
-		printf("getDeviceNames send done\n");
-	}
+    printf("getDeviceNames send done\n");
+  }
 #endif
 
-	std::vector<std::string> local;
-	bool bsuccess = Simulator::getDeviceNames(modelGroupName, local);
+  std::vector<std::string> local;
+  bool bsuccess = Simulator::getDeviceNames(modelGroupName, local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getDeviceNames recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getDeviceNames recv 2\n");
-		//MPI_Reduce(&bsuccess, &bsuccess, 1, MPI_CXX_BOOL, MPI_LOR, 0, comm());
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0); // assume rank 0 is root
-		printf("getDeviceNames recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getDeviceNames recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getDeviceNames recv 2\n");
+    //MPI_Reduce(&bsuccess, &bsuccess, 1, MPI_CXX_BOOL, MPI_LOR, 0, comm());
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0); // assume rank 0 is root
+    printf("getDeviceNames recv done\n");
 
-		if (rank() == 0) { // assume rank 0 is root
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> local;
-			}
-		}
-	}
+    if (rank() == 0) { // assume rank 0 is root
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> local;
+      }
+    }
+  }
 #endif
 
-	deviceNames.insert(deviceNames.end(), local.begin(), local.end());
+  deviceNames.insert(deviceNames.end(), local.begin(), local.end());
   return bsuccess;
 }
 
@@ -372,40 +372,40 @@ bool ParallelSimulator::getDeviceNames(const std::string &modelGroupName, std::v
 bool ParallelSimulator::getDACDeviceNames(std::vector< std::string >& dacNames)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_DAC_DEVICE_NAMES;
-		printf("getDACDeviceNames send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_DAC_DEVICE_NAMES;
+    printf("getDACDeviceNames send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getDACDeviceNames send done\n");
-	}
+    printf("getDACDeviceNames send done\n");
+  }
 #endif
 
-	std::vector<std::string> local;
-	bool bsuccess = Simulator::getDACDeviceNames(local);
+  std::vector<std::string> local;
+  bool bsuccess = Simulator::getDACDeviceNames(local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getDACDeviceNames recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getDACDeviceNames recv2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("getDACDeviceNames recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getDACDeviceNames recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getDACDeviceNames recv2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("getDACDeviceNames recv done\n");
 
-		if (rank() == 0) {
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> local;
-			}
-		}
-	}
+    if (rank() == 0) {
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> local;
+      }
+    }
+  }
 #endif
 
-	dacNames.insert(dacNames.end(), local.begin(), local.end());
+  dacNames.insert(dacNames.end(), local.begin(), local.end());
   return bsuccess;
 }
 
@@ -422,40 +422,40 @@ bool ParallelSimulator::getDACDeviceNames(std::vector< std::string >& dacNames)
 bool ParallelSimulator::getAllDeviceNames(std::vector<std::string> &deviceNames)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_ALL_DEVICE_NAMES;
-		printf("getAllDeviceNames send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_ALL_DEVICE_NAMES;
+    printf("getAllDeviceNames send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getAllDeviceNames send done\n");
-	}
+    printf("getAllDeviceNames send done\n");
+  }
 #endif
 
-	std::vector<std::string> local;
-	bool bsuccess = getAllDeviceNames(local);
+  std::vector<std::string> local;
+  bool bsuccess = getAllDeviceNames(local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getAllDeviceNames recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getAllDeviceNames recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("getAllDeviceNames recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getAllDeviceNames recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getAllDeviceNames recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("getAllDeviceNames recv done\n");
 
-		if (rank() == 0) {
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> local;
-			}
-		}
-	}
+    if (rank() == 0) {
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> local;
+      }
+    }
+  }
 #endif
 
-	deviceNames.insert(deviceNames.end(), local.begin(), local.end());
+  deviceNames.insert(deviceNames.end(), local.begin(), local.end());
   return bsuccess;
 }
 
@@ -472,23 +472,23 @@ bool ParallelSimulator::getAllDeviceNames(std::vector<std::string> &deviceNames)
 bool ParallelSimulator::checkDeviceParamName(const std::string full_param_name) const
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::CHECK_DEVICE_PARAM_NAME << full_param_name;
-		printf("checkDeviceParamName send %s\n", full_param_name.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::CHECK_DEVICE_PARAM_NAME << full_param_name;
+    printf("checkDeviceParamName send %s\n", full_param_name.c_str());
     Parallel::Broadcast(comm(), writer, 0);
-		printf("checkDeviceParamName send done\n");
-	}
+    printf("checkDeviceParamName send done\n");
+  }
 #endif
 
-	bool bsuccess = Simulator::checkDeviceParamName(full_param_name);
+  bool bsuccess = Simulator::checkDeviceParamName(full_param_name);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("checkDeviceParamName recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("checkDeviceParamName recv done\n");
-	}
+  if (size() > 1) {
+    printf("checkDeviceParamName recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("checkDeviceParamName recv done\n");
+  }
 #endif
 
   return bsuccess;
@@ -506,35 +506,35 @@ bool ParallelSimulator::checkDeviceParamName(const std::string full_param_name) 
 bool ParallelSimulator::getDeviceParamVal(const std::string full_param_name, double& val) const
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_DEVICE_PARAM_VAL << full_param_name;
-		printf("getDeviceParamVal send %s\n", full_param_name.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_DEVICE_PARAM_VAL << full_param_name;
+    printf("getDeviceParamVal send %s\n", full_param_name.c_str());
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getDeviceParamVal send done\n");
-	}
+    printf("getDeviceParamVal send done\n");
+  }
 #endif
 
-	double paramValue = 0.0;
-	bool bsuccess = Simulator::getDeviceParamVal(full_param_name, paramValue);
+  double paramValue = 0.0;
+  bool bsuccess = Simulator::getDeviceParamVal(full_param_name, paramValue);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		bool found = bsuccess;
-		printf("getDeviceParamVal recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("getDeviceParamVal recv 2\n");
-		if (rank() == 0 and bsuccess and not found) {
-			MPI_Status status;
-			MPI_Recv(&paramValue, 1, MPI_DOUBLE, MPI_ANY_SOURCE, WorkerCommand::GET_DEVICE_PARAM_VAL, comm(), &status);
-		} else if (rank() != 0 and found) {
-			MPI_Send(&paramValue, 1, MPI_DOUBLE, 0, WorkerCommand::GET_DEVICE_PARAM_VAL, comm());
-		}
-		printf("getDeviceParamVal recv done\n");
-	}
+  if (size() > 1) {
+    bool found = bsuccess;
+    printf("getDeviceParamVal recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("getDeviceParamVal recv 2\n");
+    if (rank() == 0 and bsuccess and not found) {
+      MPI_Status status;
+      MPI_Recv(&paramValue, 1, MPI_DOUBLE, MPI_ANY_SOURCE, WorkerCommand::GET_DEVICE_PARAM_VAL, comm(), &status);
+    } else if (rank() != 0 and found) {
+      MPI_Send(&paramValue, 1, MPI_DOUBLE, 0, WorkerCommand::GET_DEVICE_PARAM_VAL, comm());
+    }
+    printf("getDeviceParamVal recv done\n");
+  }
 #endif
 
-	val = paramValue;
+  val = paramValue;
   return bsuccess;
 }
 
@@ -550,25 +550,25 @@ bool ParallelSimulator::getDeviceParamVal(const std::string full_param_name, dou
 bool ParallelSimulator::getNumAdjNodesForDevice(const std::string deviceName, int& numAdjNodes) const
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_NUM_ADJ_NODES_FOR_DEVICE << deviceName;
-		printf("getNumAdjNodesForDevice send %s\n", deviceName.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_NUM_ADJ_NODES_FOR_DEVICE << deviceName;
+    printf("getNumAdjNodesForDevice send %s\n", deviceName.c_str());
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getNumAdjNodesForDevice send done\n");
-	}
+    printf("getNumAdjNodesForDevice send done\n");
+  }
 #endif
 
   bool retVal = Simulator::getNumAdjNodesForDevice(deviceName, numAdjNodes);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("getNumAdjNodesForDevice recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &retVal, 1, 0);
-		printf("getNumAdjNodesForDevice recv 2\n");
-		Parallel::OneReduce(comm(), MPI_SUM, &numAdjNodes, 1, 0);
-		printf("getNumAdjNodesForDevice recv done\n");
-	}
+  if (size() > 1) {
+    printf("getNumAdjNodesForDevice recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &retVal, 1, 0);
+    printf("getNumAdjNodesForDevice recv 2\n");
+    Parallel::OneReduce(comm(), MPI_SUM, &numAdjNodes, 1, 0);
+    printf("getNumAdjNodesForDevice recv done\n");
+  }
 #endif
 
   return retVal;
@@ -587,41 +587,41 @@ bool ParallelSimulator::getNumAdjNodesForDevice(const std::string deviceName, in
 bool ParallelSimulator::getAdjGIDsForDevice(const std::string deviceName, std::vector<int> & adj_GIDs) const
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_ADJ_GIDS_FOR_DEVICE << deviceName;
-		printf("getAdjGIDsForDevice send %s\n", deviceName.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_ADJ_GIDS_FOR_DEVICE << deviceName;
+    printf("getAdjGIDsForDevice send %s\n", deviceName.c_str());
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getAdjGIDsForDevice send done\n");
-	}
+    printf("getAdjGIDsForDevice send done\n");
+  }
 #endif
 
-	std::vector<int> local;
+  std::vector<int> local;
   bool retVal = Simulator::getAdjGIDsForDevice(deviceName, local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getAdjGIDsForDevice recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getAdjGIDsForDevice recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &retVal, 1, 0);
-		printf("getAdjGIDsForDevice recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getAdjGIDsForDevice recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getAdjGIDsForDevice recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &retVal, 1, 0);
+    printf("getAdjGIDsForDevice recv done\n");
 
-		if (rank() == 0) {
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> local;
-			}
-		}
-	}
+    if (rank() == 0) {
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> local;
+      }
+    }
+  }
 #endif
 
-	adj_GIDs.insert(adj_GIDs.end(), local.begin(), local.end());
-	return retVal;
+  adj_GIDs.insert(adj_GIDs.end(), local.begin(), local.end());
+  return retVal;
 }
 
 //----------------------------------------------------------------------------
@@ -638,50 +638,50 @@ bool ParallelSimulator::getAdjGIDsForDevice(const std::string deviceName, std::v
 bool ParallelSimulator::getADCMap(std::map<std::string, std::map<std::string, double> >&ADCMap)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_ADC_MAP;
-		printf("getADCMap send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_ADC_MAP;
+    printf("getADCMap send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getADCMap send done\n");
-	}
+    printf("getADCMap send done\n");
+  }
 #endif
 
-	std::map<std::string, std::map<std::string, double> > local;
-	bool bsuccess = Simulator::getADCMap(local);
+  std::map<std::string, std::map<std::string, double> > local;
+  bool bsuccess = Simulator::getADCMap(local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getADCMap recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getADCMap recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("getADCMap recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getADCMap recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getADCMap recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("getADCMap recv done\n");
 
-		if (rank() == 0) {
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				std::map<std::string, std::map<std::string, double> > recv;
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> recv;
-				for (auto j = recv.begin(); j != recv.end(); i++) {
-					auto loc = local.find(j->first);
-					if (loc == local.end()) {
-						local.insert(*j);
-					} else {
-						loc->second.insert(j->second.begin(), j->second.end());
-					}
-				}
-			}
-		}
-	}
+    if (rank() == 0) {
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        std::map<std::string, std::map<std::string, double> > recv;
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> recv;
+        for (auto j = recv.begin(); j != recv.end(); i++) {
+          auto loc = local.find(j->first);
+          if (loc == local.end()) {
+            local.insert(*j);
+          } else {
+            loc->second.insert(j->second.begin(), j->second.end());
+          }
+        }
+      }
+    }
+  }
 #endif
 
-	ADCMap.insert(local.begin(), local.end());
-	return bsuccess;
+  ADCMap.insert(local.begin(), local.end());
+  return bsuccess;
 }
 
 //----------------------------------------------------------------------------
@@ -700,23 +700,23 @@ bool ParallelSimulator::getADCMap(std::map<std::string, std::map<std::string, do
 bool ParallelSimulator::updateTimeVoltagePairs(const std::map< std::string, std::vector<std::pair<double,double> > *> & timeVoltageUpdateMap)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::UPDATE_TIME_VOLTAGE_PAIRS << timeVoltageUpdateMap;
-		printf("updateTimeVoltagePairs send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::UPDATE_TIME_VOLTAGE_PAIRS << timeVoltageUpdateMap;
+    printf("updateTimeVoltagePairs send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("updateTimeVoltagePairs send done\n");
-	}
+    printf("updateTimeVoltagePairs send done\n");
+  }
 #endif
 
-	bool success = Simulator::updateTimeVoltagePairs(timeVoltageUpdateMap);
+  bool success = Simulator::updateTimeVoltagePairs(timeVoltageUpdateMap);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("updateTimeVoltagePairs recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
-		printf("updateTimeVoltagePairs recv done\n");
-	}
+  if (size() > 1) {
+    printf("updateTimeVoltagePairs recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
+    printf("updateTimeVoltagePairs recv done\n");
+  }
 #endif
 
   return success;
@@ -736,46 +736,46 @@ bool ParallelSimulator::updateTimeVoltagePairs(const std::map< std::string, std:
 bool ParallelSimulator::getTimeVoltagePairs(std::map< std::string, std::vector< std::pair<double,double> > > & timeVoltageUpdateMap)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_TIME_VOLTAGE_PAIRS;
-		printf("getTimeVoltagePairs send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_TIME_VOLTAGE_PAIRS;
+    printf("getTimeVoltagePairs send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getTimeVoltagePairs send done\n");
-	}
+    printf("getTimeVoltagePairs send done\n");
+  }
 #endif
 
-	std::map< std::string, std::vector< std::pair<double,double> > > local;
-  bool success = getTimeVoltagePairs(local);
+  std::map< std::string, std::vector< std::pair<double,double> > > local;
+  bool success = Simulator::getTimeVoltagePairs(local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getTimeVoltagePairs recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getTimeVoltagePairs recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
-		printf("getTimeVoltagePairs recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getTimeVoltagePairs recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getTimeVoltagePairs recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
+    printf("getTimeVoltagePairs recv done\n");
 
-		if (rank() == 0) {
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				std::map< std::string, std::vector< std::pair<double,double> > > recv;
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> recv;
-				for (auto j = recv.begin(); j != recv.end(); j++) {
-					auto loc = local.find(j->first);
-					if (loc == local.end()) {
-						local.insert(*j);
-					} else {
-						loc->second.insert(loc->second.end(), j->second.begin(), j->second.end());
-					}
-				}
-			}
-		}
-	}
+    if (rank() == 0) {
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        std::map< std::string, std::vector< std::pair<double,double> > > recv;
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> recv;
+        for (auto j = recv.begin(); j != recv.end(); j++) {
+          auto loc = local.find(j->first);
+          if (loc == local.end()) {
+            local.insert(*j);
+          } else {
+            loc->second.insert(loc->second.end(), j->second.begin(), j->second.end());
+          }
+        }
+      }
+    }
+  }
 #endif
 
   timeVoltageUpdateMap = local;
@@ -793,28 +793,28 @@ bool ParallelSimulator::getTimeVoltagePairs(std::map< std::string, std::vector< 
 bool ParallelSimulator::getTimeVoltagePairsSz(int &maximumSize)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_TIME_VOLTAGE_PAIRS_SZ;
-		printf("getTimeVoltagePairsSz send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_TIME_VOLTAGE_PAIRS_SZ;
+    printf("getTimeVoltagePairsSz send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getTimeVoltagePairsSz send done\n");
-	}
+    printf("getTimeVoltagePairsSz send done\n");
+  }
 #endif
 
   bool retVal = Simulator::getTimeVoltagePairsSz(maximumSize);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("getTimeVoltagePairsSz recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &retVal, 1, 0);
-		printf("getTimeVoltagePairsSz recv 2\n");
-		Parallel::OneReduce(comm(), MPI_MAX, &maximumSize, 1, 0);
-		printf("getTimeVoltagePairsSz recv done\n");
-	}
+  if (size() > 1) {
+    printf("getTimeVoltagePairsSz recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &retVal, 1, 0);
+    printf("getTimeVoltagePairsSz recv 2\n");
+    Parallel::OneReduce(comm(), MPI_MAX, &maximumSize, 1, 0);
+    printf("getTimeVoltagePairsSz recv done\n");
+  }
 #endif
 
-	return retVal;
+  return retVal;
 }
 
 
@@ -832,46 +832,46 @@ bool ParallelSimulator::getTimeVoltagePairsSz(int &maximumSize)
 bool ParallelSimulator::getTimeStatePairs(std::map< std::string, std::vector< std::pair<double,int> > > & timeStateUpdateMap)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_TIME_STATE_PAIRS;
-		printf("getTimeStatePairs send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_TIME_STATE_PAIRS;
+    printf("getTimeStatePairs send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getTimeStatePairs send done\n");
-	}
+    printf("getTimeStatePairs send done\n");
+  }
 #endif
 
-	std::map< std::string, std::vector< std::pair<double,int> > > local;
-  bool success = getTimeStatePairs(local);
+  std::map< std::string, std::vector< std::pair<double,int> > > local;
+  bool success = Simulator::getTimeStatePairs(local);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << local;
-		printf("getTimeStatePairs recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getTimeStatePairs recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
-		printf("getTimeStatePairs recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << local;
+    printf("getTimeStatePairs recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getTimeStatePairs recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
+    printf("getTimeStatePairs recv done\n");
 
-		if (rank() == 0) {
-			local.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				std::map< std::string, std::vector< std::pair<double,int> > > recv;
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> recv;
-				for (auto j = recv.begin(); j != recv.end(); j++) {
-					auto loc = local.find(j->first);
-					if (loc == local.end()) {
-						local.insert(*j);
-					} else {
-						loc->second.insert(loc->second.end(), j->second.begin(), j->second.end());
-					}
-				}
-			}
-		}
-	}
+    if (rank() == 0) {
+      local.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        std::map< std::string, std::vector< std::pair<double,int> > > recv;
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> recv;
+        for (auto j = recv.begin(); j != recv.end(); j++) {
+          auto loc = local.find(j->first);
+          if (loc == local.end()) {
+            local.insert(*j);
+          } else {
+            loc->second.insert(loc->second.end(), j->second.begin(), j->second.end());
+          }
+        }
+      }
+    }
+  }
 #endif
 
   timeStateUpdateMap = local;
@@ -891,23 +891,23 @@ bool ParallelSimulator::getTimeStatePairs(std::map< std::string, std::vector< st
 bool ParallelSimulator::setADCWidths(const std::map<std::string, int> &ADCWidthMap)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::SET_ADC_WIDTHS << ADCWidthMap;
-		printf("setADCWidths send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::SET_ADC_WIDTHS << ADCWidthMap;
+    printf("setADCWidths send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("setADCWidths send done\n");
-	}
+    printf("setADCWidths send done\n");
+  }
 #endif
 
-	bool success = Simulator::setADCWidths(ADCWidthMap);
+  bool success = Simulator::setADCWidths(ADCWidthMap);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("setADCWidths recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
-		printf("setADCWidths recv done\n");
-	}
+  if (size() > 1) {
+    printf("setADCWidths recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
+    printf("setADCWidths recv done\n");
+  }
 #endif
 
   return success;
@@ -925,45 +925,45 @@ bool ParallelSimulator::setADCWidths(const std::map<std::string, int> &ADCWidthM
 bool ParallelSimulator::getADCWidths(std::map<std::string, int> &ADCWidthMap)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_ADC_WIDTHS << ADCWidthMap;
-		printf("getADCWidths send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_ADC_WIDTHS << ADCWidthMap;
+    printf("getADCWidths send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getADCWidths send done\n");
-	}
+    printf("getADCWidths send done\n");
+  }
 #endif
 
-	bool success = Simulator::getADCWidths(ADCWidthMap);
+  bool success = Simulator::getADCWidths(ADCWidthMap);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		std::vector<std::string> deviceGroups;
-		Util::Marshal writer;
-		writer << ADCWidthMap;
-		printf("getADCWidths recv\n");
-		Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-		printf("getADCWidths recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
-		printf("getADCWidths recv done\n");
+  if (size() > 1) {
+    std::vector<std::string> deviceGroups;
+    Util::Marshal writer;
+    writer << ADCWidthMap;
+    printf("getADCWidths recv\n");
+    Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
+    printf("getADCWidths recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
+    printf("getADCWidths recv done\n");
 
-		if (rank() == 0) {
-			ADCWidthMap.clear();
-			for (int i = 0; i < (int)deviceGroups.size(); i++) {
-				std::map< std::string, int > recv;
-				Util::Marshal reader(deviceGroups[i]);
-				reader >> recv;
-				for (auto j = recv.begin(); j != recv.end(); j++) {
-					auto loc = ADCWidthMap.find(j->first);
-					if (loc == ADCWidthMap.end()) {
-						ADCWidthMap.insert(*j);
-					} else {
-						loc->second = j->second;
-					}
-				}
-			}
-		}
-	}
+    if (rank() == 0) {
+      ADCWidthMap.clear();
+      for (int i = 0; i < (int)deviceGroups.size(); i++) {
+        std::map< std::string, int > recv;
+        Util::Marshal reader(deviceGroups[i]);
+        reader >> recv;
+        for (auto j = recv.begin(); j != recv.end(); j++) {
+          auto loc = ADCWidthMap.find(j->first);
+          if (loc == ADCWidthMap.end()) {
+            ADCWidthMap.insert(*j);
+          } else {
+            loc->second = j->second;
+          }
+        }
+      }
+    }
+  }
 #endif
 
   return success;
@@ -988,26 +988,29 @@ bool ParallelSimulator::simulateUntil(
   double        requestedUntilTime,
   double &      completedUntilTime)
 {
+  printf("entering simulateUntil %e\n", requestedUntilTime);
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::SIMULATE_UNTIL << requestedUntilTime;
-		printf("simulateUntil send %f\n", requestedUntilTime);
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::SIMULATE_UNTIL << requestedUntilTime;
+    printf("simulateUntil send %e\n", requestedUntilTime);
     Parallel::Broadcast(comm(), writer, 0);
-		printf("simulateUntil send done\n");
-	}
+    printf("simulateUntil send done\n");
+  }
 #endif
 
+  printf("simulateUntil starting simulation %e\n", requestedUntilTime);
   bool bsuccess = Simulator::simulateUntil(requestedUntilTime, completedUntilTime);
+  printf("simulateUntil finishing simulation %e\n", completedUntilTime);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("simulateUntil recv\n");
-		Parallel::OneReduce(comm(), MPI_MIN, &completedUntilTime, 1, 0);
-		printf("simulateUntil recv 2\n");
-		Parallel::OneReduce(comm(), MPI_LAND, &bsuccess, 1, 0);
-		printf("simulateUntil recv done\n");
-	}
+  if (size() > 1) {
+    printf("simulateUntil recv\n");
+    Parallel::OneReduce(comm(), MPI_MIN, &completedUntilTime, 1, 0);
+    printf("simulateUntil recv 2\n");
+    Parallel::OneReduce(comm(), MPI_LAND, &bsuccess, 1, 0);
+    printf("simulateUntil recv done\n");
+  }
 #endif
 
   return bsuccess;
@@ -1027,23 +1030,23 @@ bool ParallelSimulator::simulateUntil(
 ParallelSimulator::RunStatus ParallelSimulator::finalize()
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::FINALIZE;
-		printf("finalize send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::FINALIZE;
+    printf("finalize send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("finalize send done\n");
-	}
+    printf("finalize send done\n");
+  }
 #endif
 
-	bool success = (Simulator::finalize() == SUCCESS);
+  bool success = (Simulator::finalize() == SUCCESS);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("finalize recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
-		printf("finalize recv done\n");
-	}
+  if (size() > 1) {
+    printf("finalize recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &success, 1, 0);
+    printf("finalize recv done\n");
+  }
 #endif
 
   return success ? SUCCESS : ERROR;
@@ -1061,26 +1064,26 @@ ParallelSimulator::RunStatus ParallelSimulator::finalize()
 bool ParallelSimulator::simulationComplete()
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::SIMULATION_COMPLETE;
-		printf("simulationComplete send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::SIMULATION_COMPLETE;
+    printf("simulationComplete send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("simulationComplete send done\n");
-	}
+    printf("simulationComplete send done\n");
+  }
 #endif
 
   bool bcomplete = Simulator::simulationComplete();
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("simulationComplete recv\n");
-		Parallel::OneReduce(comm(), MPI_LAND, &bcomplete, 1, 0);
-		printf("simulationComplete recv done\n");
-	}
+  if (size() > 1) {
+    printf("simulationComplete recv\n");
+    Parallel::OneReduce(comm(), MPI_LAND, &bcomplete, 1, 0);
+    printf("simulationComplete recv done\n");
+  }
 #endif
 
-	return bcomplete;
+  return bcomplete;
 }
 
 //---------------------------------------------------------------------------
@@ -1098,19 +1101,19 @@ bool ParallelSimulator::checkResponseVar(
   const std::string &   variable_name) const
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::CHECK_RESPONSE_VAR << variable_name;
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::CHECK_RESPONSE_VAR << variable_name;
     Parallel::Broadcast(comm(), writer, 0);
-	}
+  }
 #endif
 
   bool returnValue = Simulator::checkResponseVar(variable_name);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		Parallel::OneReduce(comm(), MPI_LOR, &returnValue, 1, 0);
-	}
+  if (size() > 1) {
+    Parallel::OneReduce(comm(), MPI_LOR, &returnValue, 1, 0);
+  }
 #endif
   return returnValue;
 }
@@ -1131,35 +1134,35 @@ bool ParallelSimulator::obtainResponse(
   double &              result) const
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::OBTAIN_RESPONSE << variable_name;
-		printf("obtainResponse send %s\n", variable_name.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::OBTAIN_RESPONSE << variable_name;
+    printf("obtainResponse send %s\n", variable_name.c_str());
     Parallel::Broadcast(comm(), writer, 0);
-		printf("obtainResponse send done\n");
-	}
+    printf("obtainResponse send done\n");
+  }
 #endif
 
-	double paramValue = 0.0;
+  double paramValue = 0.0;
   bool bsuccess = Simulator::obtainResponse(variable_name, paramValue);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		bool found = bsuccess;
-		printf("obtainResponse recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("obtainResponse recv 2\n");
-		if (rank() == 0 and bsuccess and not found) {
-			MPI_Status status;
-			MPI_Recv(&paramValue, 1, MPI_DOUBLE, MPI_ANY_SOURCE, WorkerCommand::OBTAIN_RESPONSE, comm(), &status);
-		} else if (rank() != 0 and found) {
-			MPI_Send(&paramValue, 1, MPI_DOUBLE, 0, WorkerCommand::OBTAIN_RESPONSE, comm());
-		}
-		printf("obtainResponse recv done\n");
-	}
+  if (size() > 1) {
+    bool found = bsuccess;
+    printf("obtainResponse recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("obtainResponse recv 2\n");
+    if (rank() == 0 and bsuccess and not found) {
+      MPI_Status status;
+      MPI_Recv(&paramValue, 1, MPI_DOUBLE, MPI_ANY_SOURCE, WorkerCommand::OBTAIN_RESPONSE, comm(), &status);
+    } else if (rank() != 0 and found) {
+      MPI_Send(&paramValue, 1, MPI_DOUBLE, 0, WorkerCommand::OBTAIN_RESPONSE, comm());
+    }
+    printf("obtainResponse recv done\n");
+  }
 #endif
 
-	result = paramValue;
+  result = paramValue;
   return bsuccess;
 }
 
@@ -1171,19 +1174,19 @@ bool ParallelSimulator::obtainResponse(
 bool ParallelSimulator::checkCircuitParameterExists(std::string paramName)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::CHECK_CIRCUIT_PARAMETER_EXISTS << paramName;
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::CHECK_CIRCUIT_PARAMETER_EXISTS << paramName;
     Parallel::Broadcast(comm(), writer, 0);
-	}
+  }
 #endif
 
   bool returnValue = Simulator::checkCircuitParameterExists(paramName);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		Parallel::OneReduce(comm(), MPI_LOR, &returnValue, 1, 0);
-	}
+  if (size() > 1) {
+    Parallel::OneReduce(comm(), MPI_LOR, &returnValue, 1, 0);
+  }
 #endif
   return returnValue;
 }
@@ -1195,25 +1198,25 @@ bool ParallelSimulator::checkCircuitParameterExists(std::string paramName)
 bool ParallelSimulator::setCircuitParameter(std::string paramName, double paramValue)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::SET_CIRCUIT_PARAMETER << paramName << paramValue;
-		printf("setCircuitParameter send %s = %f\n", paramName.c_str(), paramValue);
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::SET_CIRCUIT_PARAMETER << paramName << paramValue;
+    printf("setCircuitParameter send %s = %e\n", paramName.c_str(), paramValue);
     Parallel::Broadcast(comm(), writer, 0);
-		printf("setCircuitParameter send done\n");
-	}
+    printf("setCircuitParameter send done\n");
+  }
 #endif
 
   bool bsuccess = Simulator::setCircuitParameter(paramName, paramValue);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("setCircuitParameter recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("setCircuitParameter recv done\n");
-	}
+  if (size() > 1) {
+    printf("setCircuitParameter recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("setCircuitParameter recv done\n");
+  }
 #endif
-	return bsuccess;
+  return bsuccess;
 }
 
 //
@@ -1224,35 +1227,35 @@ bool ParallelSimulator::setCircuitParameter(std::string paramName, double paramV
 bool ParallelSimulator::getCircuitValue(std::string paramName, double& paramValue)
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_CIRCUIT_VALUE << paramName;
-		printf("getCircuitValue send %s\n", paramName.c_str());
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_CIRCUIT_VALUE << paramName;
+    printf("getCircuitValue send %s\n", paramName.c_str());
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getCircuitValue send done\n");
-	}
+    printf("getCircuitValue send done\n");
+  }
 #endif
 
-	double result;
+  double result;
   bool bsuccess = Simulator::getCircuitValue(paramName, result);
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		bool found = bsuccess;
-		printf("getCircuitValue recv\n");
-		Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
-		printf("getCircuitValue recv 2\n");
-		if (rank() == 0 and bsuccess and not found) {
-			MPI_Status status;
-			MPI_Recv(&result, 1, MPI_DOUBLE, MPI_ANY_SOURCE, WorkerCommand::GET_CIRCUIT_VALUE, comm(), &status);
-		} else if (rank() != 0 and found) {
-			MPI_Send(&result, 1, MPI_DOUBLE, 0, WorkerCommand::GET_CIRCUIT_VALUE, comm());
-		}
-		printf("getCircuitValue recv done\n");
-	}
+  if (size() > 1) {
+    bool found = bsuccess;
+    printf("getCircuitValue recv\n");
+    Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0);
+    printf("getCircuitValue recv 2\n");
+    if (rank() == 0 and bsuccess and not found) {
+      MPI_Status status;
+      MPI_Recv(&result, 1, MPI_DOUBLE, MPI_ANY_SOURCE, WorkerCommand::GET_CIRCUIT_VALUE, comm(), &status);
+    } else if (rank() != 0 and found) {
+      MPI_Send(&result, 1, MPI_DOUBLE, 0, WorkerCommand::GET_CIRCUIT_VALUE, comm());
+    }
+    printf("getCircuitValue recv done\n");
+  }
 #endif
 
-	paramValue = result;
+  paramValue = result;
   return bsuccess;
 }
 
@@ -1262,25 +1265,25 @@ bool ParallelSimulator::getCircuitValue(std::string paramName, double& paramValu
 double ParallelSimulator::getTime()
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_TIME;
-		printf("getTime send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_TIME;
+    printf("getTime send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getTime send done\n");
-	}
+    printf("getTime send done\n");
+  }
 #endif
 
   double btime = Simulator::getTime();
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("getTime recv\n");
-		Parallel::OneReduce(comm(), MPI_MIN, &btime, 1, 0);
-		printf("getTime recv done\n");
-	}
+  if (size() > 1) {
+    printf("getTime recv\n");
+    Parallel::OneReduce(comm(), MPI_MIN, &btime, 1, 0);
+    printf("getTime recv done\n");
+  }
 #endif
-	return btime;
+  return btime;
 }
 
 //
@@ -1289,25 +1292,25 @@ double ParallelSimulator::getTime()
 double ParallelSimulator::getFinalTime()
 {
 #ifdef Xyce_PARALLEL_MPI
-	if (rank() == 0 && size() > 1) {
-		Util::Marshal writer;
-		writer << (int)WorkerCommand::GET_FINAL_TIME;
-		printf("getFinalTime send\n");
+  if (rank() == 0 && size() > 1) {
+    Util::Marshal writer;
+    writer << (int)WorkerCommand::GET_FINAL_TIME;
+    printf("getFinalTime send\n");
     Parallel::Broadcast(comm(), writer, 0);
-		printf("getFinalTime send done\n");
-	}
+    printf("getFinalTime send done\n");
+  }
 #endif
 
   double btime = Simulator::getFinalTime();
 
 #ifdef Xyce_PARALLEL_MPI
-	if (size() > 1) {
-		printf("getFinalTime recv\n");
-		Parallel::OneReduce(comm(), MPI_MAX, &btime, 1, 0);
-		printf("getFinalTime recv done\n");
-	}
+  if (size() > 1) {
+    printf("getFinalTime recv\n");
+    Parallel::OneReduce(comm(), MPI_MAX, &btime, 1, 0);
+    printf("getFinalTime recv done\n");
+  }
 #endif
-	return btime;
+  return btime;
 }
 
 
