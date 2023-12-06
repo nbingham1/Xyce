@@ -460,7 +460,7 @@ bool Instance::getInstanceBreakPoints ( std::vector<Util::BreakPoint> & breakPoi
   double * solVector = extData.nextSolVectorRawPtr;
   
   // reference to the stoVector.  Needed if we update the state
-  Linear::Vector & stoVector = *(extData.nextStoVectorPtr);
+  Linear::Vector *stoVector = extData.nextStoVectorPtr;
 
   vPos = solVector[li_Pos];
   vNeg = solVector[li_Neg];
@@ -489,7 +489,12 @@ bool Instance::getInstanceBreakPoints ( std::vector<Util::BreakPoint> & breakPoi
     lastOutputLevel_ = newState;
     
     // update value in store vector so that it is available to the user for output
-    stoVector[li_store_output_state]=(double) lastOutputLevel_;
+    if (stoVector != NULL) {
+      (*stoVector)[li_store_output_state]=(double) lastOutputLevel_;
+    } else {
+      // TODO(edward.bingham) This shouldn't happen but we get here when setting an initial condition on the input node of an ADC
+      Xyce::dout() << "stoVector is NULL" << std::endl;
+    }
 
     if (DEBUG_DEVICE && isActive(Diag::DEVICE_PARAMETERS) && getSolverState().debugTimeFlag)
     {
