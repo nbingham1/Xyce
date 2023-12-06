@@ -55,7 +55,7 @@ namespace Circuit {
 template <class ...Types>
 class CallArgs
 {
-	
+  
 };
 
 //-----------------------------------------------------------------------------
@@ -77,7 +77,7 @@ class CallArgs
 class ParallelSimulator : public Simulator
 {
 public:
-	using Simulator::RunStatus;
+  using Simulator::RunStatus;
 
   /// Constructor
   ParallelSimulator(Xyce::Parallel::Machine comm=MPI_COMM_NULL) : Simulator(comm)
@@ -147,8 +147,8 @@ public:
   //---------------------------------------------------------------------------
   RunStatus initialize(int argc, char **argv);
 
-	using Simulator::initializeEarly;
-	using Simulator::initializeLate;
+  using Simulator::initializeEarly;
+  using Simulator::initializeLate;
 
   //---------------------------------------------------------------------------
   // Function      : runSimulation
@@ -159,7 +159,7 @@ public:
   // Creation Date : 5/27/00
   //---------------------------------------------------------------------------
   RunStatus runSimulation();
-	RunStatus runWorker();
+  RunStatus runWorker();
 
   bool getDeviceNames(const std::string & modelGroupName, std::vector<std::string> & deviceNames);
   bool getAllDeviceNames(std::vector<std::string> & deviceNames);
@@ -340,35 +340,35 @@ public:
   bool simulationComplete();
 
 protected:
-	enum WorkerCommand
-	{
-		INITIALIZE,
-		RUN_SIMULATION,
-		SIMULATE_UNTIL,
-		SIMULATION_COMPLETE,
-		CHECK_CIRCUIT_PARAMETER_EXISTS,
-		GET_TIME,
-		GET_FINAL_TIME,
-		GET_DEVICE_NAMES,
-		GET_ALL_DEVICE_NAMES,
-		GET_DAC_DEVICE_NAMES,
-		CHECK_DEVICE_PARAM_NAME,
-		GET_DEVICE_PARAM_VAL,
-		GET_NUM_ADJ_NODES_FOR_DEVICE,
-		GET_ADJ_GIDS_FOR_DEVICE,
-		GET_ADC_MAP,
-		UPDATE_TIME_VOLTAGE_PAIRS,
-		GET_TIME_VOLTAGE_PAIRS,
-		GET_TIME_VOLTAGE_PAIRS_SZ,
-		GET_TIME_STATE_PAIRS,
-		SET_ADC_WIDTHS,
-		GET_ADC_WIDTHS,
-		GET_CIRCUIT_VALUE,
-		SET_CIRCUIT_PARAMETER,
-		CHECK_RESPONSE_VAR,
-		OBTAIN_RESPONSE,
-		FINALIZE
-	};
+  enum WorkerCommand
+  {
+    INITIALIZE,
+    RUN_SIMULATION,
+    SIMULATE_UNTIL,
+    SIMULATION_COMPLETE,
+    CHECK_CIRCUIT_PARAMETER_EXISTS,
+    GET_TIME,
+    GET_FINAL_TIME,
+    GET_DEVICE_NAMES,
+    GET_ALL_DEVICE_NAMES,
+    GET_DAC_DEVICE_NAMES,
+    CHECK_DEVICE_PARAM_NAME,
+    GET_DEVICE_PARAM_VAL,
+    GET_NUM_ADJ_NODES_FOR_DEVICE,
+    GET_ADJ_GIDS_FOR_DEVICE,
+    GET_ADC_MAP,
+    UPDATE_TIME_VOLTAGE_PAIRS,
+    GET_TIME_VOLTAGE_PAIRS,
+    GET_TIME_VOLTAGE_PAIRS_SZ,
+    GET_TIME_STATE_PAIRS,
+    SET_ADC_WIDTHS,
+    GET_ADC_WIDTHS,
+    GET_CIRCUIT_VALUE,
+    SET_CIRCUIT_PARAMETER,
+    CHECK_RESPONSE_VAR,
+    OBTAIN_RESPONSE,
+    FINALIZE
+  };
 
 };
 
