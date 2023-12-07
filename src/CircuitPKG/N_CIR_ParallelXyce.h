@@ -22,17 +22,11 @@
 
 //-------------------------------------------------------------------------
 //
-// Purpose        : Provide a class for more general Xyce/Alegra coupling
+// Purpose        : Provide a map-reduce parallel interface for Xyce
 //
-// Special Notes  : This class is meant to provide a more general Xyce/Alegra
-//                  coupling API than that provided by the old N_CIR_Xygra class,
-//                  which is fairly general but clearly set up and named
-//                  for its primary use case, simulating coils in Alegra
-//                  and coupling them loosely to Xyce.
+// Creator        : Ned Bingham, Broccoli, LLC
 //
-// Creator        : Tom Russo, SNL, Electrical Models & Simulation
-//
-// Creation Date  : 2/22/2017
+// Creation Date  : 12/7/2023
 //
 //-------------------------------------------------------------------------
 

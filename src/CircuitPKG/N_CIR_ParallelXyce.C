@@ -22,23 +22,11 @@
 
 //-------------------------------------------------------------------------
 //
-// Purpose        : Provide a class for loose coupling with Alegra
-//                  or other codes
+// Purpose        : Provide a map-reduce parallel interface for Xyce
 //
-// Special Notes  : This interface allows an external code to control
-//                  the time stepping, calling Xyce to run coupled
-//                  circuit problems on very small time scales.
+// Creator        : Ned Bingham, Broccoli, LLC
 //
-//                  The external simulator is responsible for intializing
-//                  Xyce via the API calls, passing critical data to the
-//                  "GeneralExteral" devices, and asking Xyce to simulate
-//                  for a requested time interval.  The external code
-//                  can then query the devices for their final solution
-//                  variables and repeat the process.
-//
-// Creator        : Tom Russo, SNL, Electrical Models & Simulation
-//
-// Creation Date  : 2/27/2017
+// Creation Date  : 12/7/2023
 //
 //-------------------------------------------------------------------------
 #include <Xyce_config.h>
