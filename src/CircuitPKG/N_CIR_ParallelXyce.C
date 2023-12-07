@@ -287,7 +287,6 @@ bool ParallelSimulator::getDeviceNames(const std::string &modelGroupName, std::v
     Util::Marshal writer;
     writer << local;
     Parallel::GatherV(comm(), 0, writer.str(), deviceGroups);
-    //MPI_Reduce(&bsuccess, &bsuccess, 1, MPI_CXX_BOOL, MPI_LOR, 0, comm());
     Parallel::OneReduce(comm(), MPI_LOR, &bsuccess, 1, 0); // assume rank 0 is root
 
     if (rank() == 0) { // assume rank 0 is root
