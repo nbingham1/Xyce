@@ -1460,6 +1460,84 @@ bool CircuitBlock::handleLinePass1(
       Report::UserWarning0().at(netlistFilename_, line[0].lineNumber_)
         << ".SAVE line not handled properly, statement skipped";
     }
+		else if (ES1 == ".IF")
+		{
+			// get the old context name to compare at the end of this subckt block
+      std::string old_name = circuitContext_.getCurrentContextPtr()->getName();
+
+      // Create a new CircuitBlock to hold the subcircuit definition.
+      // Set the parentCircuitPtr of the new CircuitBlock.
+      ConditionBlock* conditionBlockPtr =
+        new ConditionBlock(
+          netlistFilename_,
+          commandLine_,
+          hangingResistor_,
+          metadata_,
+          modelNames_,
+          ssfMap_,
+          includeFileLocation_,
+          circuitContext_,
+          mainCircuitPtr_,
+          this,
+          topology_,
+          deviceManager_,
+          deviceNames_,
+          nodeNames_,
+          aliasNodeMap_,
+          externalNetlistParams_,
+          expressionGroup_,
+          preprocessFilter_,
+          remove_any_redundant_,
+          model_binning_flag_,
+          lengthScale_);
+
+      // Start a new condition context in the circuit context.
+      result = circuitContext_.beginConditionContext(netlistFilename_, line);
+
+      // Conditions must use the ssfPtr_ that was set up by the
+      // main circuit for parsing the input file.
+      conditionBlockPtr->setSSFPtr(ssfPtr_);
+      conditionBlockPtr->setStartPosition();
+
+      // Extract the condition data from line.
+      if (result) {
+        // Extract the condition data from line.
+        std::string conditionName = circuitContext_.getCurrentContextPtr()->getName();
+
+        conditionBlockPtr->setName( conditionName );
+      }
+
+      result &= conditionBlockPtr->parseNetlistFilePass1(options_manager, libSelect, libInside);
+
+      // get the current context name to compare
+      CircuitContext* context = circuitContext_.getCurrentContextPtr();
+      std::string name = context->getName();
+
+      // Check if the parser thinks it is still inside a condition, even though it is done.
+      // This means the netlist finished parsing without find .ENDS.
+      if (old_name != name)
+      {
+        Report::UserError().at(context->getLocation())
+          << "Condition " << context->getName() << " missing .ENDS";
+      }
+
+			// TODO(edward.bingham) implement this
+		}
+		else if (ES1 == ".ELSEIF")
+		{
+			// TODO(edward.bingham) implement this
+
+		}
+		else if (ES1 == ".ELSE")
+		{
+			// TODO(edward.bingham) implement this
+
+		}
+		else if (ES1 == ".ENDIF")
+		{
+			// TODO(edward.bingham) implement this
+
+		}
     else if (ES1 == ".SUBCKT")
     {
       // get the old context name to compare at the end of this subckt block
